@@ -1,8 +1,10 @@
-const CACHE = 'formbuilder-v1';
+const VERSION = '0.2.0';
+const CACHE = 'formbuilder-v' + VERSION;
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
 });
 
 self.addEventListener('activate', e => {
@@ -13,20 +15,29 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Stale-while-revalidate: بلافاصله از کش پاسخ می‌دهد و در پس‌زمینه به‌روز می‌کند
+// نسخهٔ جدید فقط وقتی کاربر از منوی «بروزرسانی» تأیید کند فعال می‌شود
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
+// Stale-while-revalidate برای فایل‌های برنامه و فونت‌ها
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  const sameOrigin = url.origin === location.origin;
+  const isFont = FONT_HOSTS.includes(url.hostname);
+  if (!sameOrigin && !isFont) return; // درخواست‌های API پیام‌رسان‌ها دست‌نخورده می‌مانند
   e.respondWith(
     caches.match(e.request).then(cached => {
       const net = fetch(e.request)
         .then(res => {
-          if (res.ok && new URL(e.request.url).origin === location.origin) {
+          if (res.ok || res.type === 'opaque') {
             const copy = res.clone();
             caches.open(CACHE).then(c => c.put(e.request, copy));
           }
           return res;
         })
-        .catch(() => cached || caches.match('./index.html'));
+        .catch(() => cached || (sameOrigin ? caches.match('./index.html') : Response.error()));
       return cached || net;
     })
   );

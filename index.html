@@ -6,14 +6,19 @@
 <meta name="theme-color" content="#4f46e5">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>فرم‌ساز</title>
 <style>
+@font-face{font-family:"Vazirmatn Local";src:url("fonts/Vazirmatn-variable.woff2") format("woff2");font-weight:100 900;font-display:swap}
 :root{--bg:#f4f5fa;--card:#fff;--fg:#1f2430;--muted:#6b7280;--line:#e3e5ee;--pri:#4f46e5;--pri-fg:#fff;--danger:#dc2626;--ok:#16a34a;--soft:#eef0ff}
-@media (prefers-color-scheme:dark){:root{--bg:#12141c;--card:#1c1f2b;--fg:#eceef6;--muted:#9aa1b5;--line:#2c3040;--pri:#7c83ff;--pri-fg:#10121a;--danger:#f87171;--soft:#262a45}}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#12141c;--card:#1c1f2b;--fg:#eceef6;--muted:#9aa1b5;--line:#2c3040;--pri:#7c83ff;--pri-fg:#10121a;--danger:#f87171;--soft:#262a45}}
+:root[data-theme=dark]{--bg:#12141c;--card:#1c1f2b;--fg:#eceef6;--muted:#9aa1b5;--line:#2c3040;--pri:#7c83ff;--pri-fg:#10121a;--danger:#f87171;--soft:#262a45}
 *{box-sizing:border-box}
 html,body{margin:0}
-body{background:var(--bg);color:var(--fg);font-family:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;font-size:15px;line-height:1.7;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--fg);font-family:"Vazirmatn Local",Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;font-size:15px;line-height:1.7;-webkit-tap-highlight-color:transparent}
 a{color:inherit;text-decoration:none}
 .bar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));background:var(--pri);color:var(--pri-fg)}
 .bar h1{flex:1;margin:0;font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -38,6 +43,40 @@ p{margin:2px 0}
 .empty{text-align:center;color:var(--muted);padding:36px 10px}
 .empty.sm{padding:14px}
 .foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:18px}
+
+/* shell */
+#drawer{position:fixed;top:0;bottom:0;right:0;width:290px;max-width:86vw;background:var(--card);border-left:1px solid var(--line);z-index:30;transform:translateX(100%);transition:transform .25s;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+#drawer.open{transform:none}
+#backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:25;opacity:0;pointer-events:none;transition:opacity .25s}
+#backdrop.show{opacity:1;pointer-events:auto}
+.dr-head{display:flex;flex-direction:column;padding:18px 16px 12px;border-bottom:1px solid var(--line);font-size:18px}
+.dr-list{overflow:auto;padding:8px;flex:1}
+.dr-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;margin-bottom:2px}
+.dr-item:hover{background:var(--soft)}
+.dr-item.active{background:var(--soft);color:var(--pri);font-weight:700}
+.dr-ic{width:26px;text-align:center;font-size:18px}
+@media (min-width:900px){
+  #drawer{transform:none}#backdrop{display:none}
+  #app{margin-right:290px}.menu-btn{display:none}
+  .main{max-width:980px}
+}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:18px}
+.tile{display:flex;flex-direction:column;gap:2px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.tile:hover{border-color:var(--pri)}
+.tile-ic{font-size:26px}
+.steps{margin:8px 0 0;padding-inline-start:22px}
+.about{text-align:center}
+.bars{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.bar-row{display:grid;grid-template-columns:minmax(70px,28%) 1fr 36px;align-items:center;gap:8px}
+.bar-l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
+.bar-track{background:var(--bg);border-radius:99px;height:14px;overflow:hidden}
+.bar-fill{height:100%;border-radius:99px;min-width:4px}
+.bar-n{text-align:center;font-size:13px}
+.pie-wrap{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:center;margin-top:8px}
+.pie{width:170px;height:170px}.pie svg{width:100%;height:100%}
+.legend{display:flex;flex-direction:column;gap:4px}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tbl{width:100%;border-collapse:collapse;margin-top:8px}.tbl td{border-bottom:1px solid var(--line);padding:6px 4px}.tbl td:last-child{text-align:left;font-weight:700}
 /* fields */
 .field{margin-bottom:14px}
 .lbl{font-weight:600;margin-bottom:4px}
@@ -220,7 +259,8 @@ const Store={
   get forms(){return load('fb.forms',[]);},set forms(v){save('fb.forms',v);},
   get records(){return load('fb.records',{});},set records(v){save('fb.records',v);}
 };
-const getForm=id=>Store.forms.find(f=>f.id===id);
+const VIRTUAL={};
+const getForm=id=>VIRTUAL[id]||Store.forms.find(f=>f.id===id);
 const recordsOf=fid=>Store.records[fid]||[];
 function setRecords(fid,arr){const r=Store.records;r[fid]=arr;Store.records=r;}
 function usesForm(gid,targetId,seen=new Set()){
@@ -487,22 +527,111 @@ function buildSubform(f,value,depth){
   return {el:box,get:()=>multi?items:(items[0]??null),validate:()=>f.required&&!items.length?'ثبت اطلاعات الزامی است':''};
 }
 
-/* ---------- pages ---------- */
+/* ---------- pages / shell ---------- */
+const APP_VERSION='0.2.0';
+const DB={get:(k,d)=>load('fb.'+k,d),set:(k,v)=>save('fb.'+k,v)};
+const F=(id,label,type,extra)=>({id,label,type,...extra});
+const appName=()=>DB.get('settings',{}).appName||'فرم‌ساز';
+const MENU=[
+  ['home','خانه','🏠','#/'],
+  ['forms','مدیریت فرم‌ها','📝','#/forms'],
+  ['reports','مدیریت گزارش‌ها و نمودارها','📊','#/reports'],
+  ['users','کاربران و نقش‌ها','👥','#/users'],
+  ['process','تعریف فرآیند','🔀','#/process'],
+  ['messenger','اتصال به پیام‌رسان','💬','#/messenger'],
+  ['bale','تنظیمات بله','🟢','#/bale'],
+  ['telegram','تنظیمات تلگرام','✈️','#/telegram'],
+  ['backup','پشتیبان‌گیری و بازیابی','💾','#/backup'],
+  ['update','بروزرسانی','🔄','#/update'],
+  ['settings','تنظیمات برنامه','⚙️','#/settings'],
+  ['about','درباره ما','ℹ️','#/about']
+];
+let drawerEl,backdropEl;
+function buildDrawer(){
+  backdropEl=h('div',{id:'backdrop',onclick:closeDrawer});
+  drawerEl=h('nav',{id:'drawer','aria-label':'منوی اصلی'},
+    h('div',{class:'dr-head'},h('b',{id:'dr-name'},appName()),h('span',{class:'muted sm'},'نسخه '+fa(APP_VERSION))),
+    h('div',{class:'dr-list'},MENU.map(m=>h('a',{href:m[3],'data-id':m[0],class:'dr-item',onclick:closeDrawer},h('span',{class:'dr-ic'},m[2]),m[1]))));
+  document.body.append(backdropEl,drawerEl);
+}
+const openDrawer=()=>{drawerEl.classList.add('open');backdropEl.classList.add('show');};
+function closeDrawer(){drawerEl.classList.remove('open');backdropEl.classList.remove('show');}
+function markActive(id){drawerEl.querySelectorAll('.dr-item').forEach(a=>a.classList.toggle('active',a.dataset.id===id));$('#dr-name').textContent=appName();}
+
 function page(o,...content){
   const app=$('#app');app.innerHTML='';
   app.append(
     h('header',{class:'bar'},
+      h('button',{class:'icon-btn menu-btn','aria-label':'منو',onclick:openDrawer},'☰'),
       o.back?h('a',{class:'icon-btn',href:o.back,'aria-label':'بازگشت'},'→'):null,
       h('h1',{},o.title),h('div',{class:'bar-actions'},o.actions||[])),
     h('main',{class:'main'},content));
   window.scrollTo(0,0);
 }
 function notFound(){page({title:'پیدا نشد',back:'#/'},h('div',{class:'empty'},'این مورد وجود ندارد.'));}
+function soon(title,text){page({title},h('div',{class:'card note'},text));}
 
-let deferredPrompt=null;
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;const b=$('#install');if(b)b.hidden=false;});
+function applySettings(){
+  const s=DB.get('settings',{});
+  document.documentElement.dataset.theme=s.theme==='روشن'?'light':s.theme==='تیره'?'dark':'';
+  document.body.style.fontSize=(s.fontSize||15)+'px';
+  document.title=appName();
+}
+const PERMS=[['forms','مدیریت فرم‌ها'],['records','ثبت و ویرایش رکورد'],['reports','مشاهدهٔ گزارش‌ها'],['users','مدیریت کاربران'],['process','مدیریت فرآیندها'],['settings','تنظیمات برنامه']];
+function seed(){
+  if(DB.get('roles',null))return;
+  DB.set('roles',[
+    {id:uid(),name:'مدیر کل',perms:PERMS.map(p=>p[0])},
+    {id:uid(),name:'اپراتور',perms:['records','reports']},
+    {id:uid(),name:'ناظر',perms:['reports']}]);
+}
+function upsert(key,obj){const a=DB.get(key,[]);const i=a.findIndex(x=>x.id===obj.id);if(i>=0)a[i]=obj;else a.push(obj);DB.set(key,a);}
+function removeFrom(key,id){DB.set(key,DB.get(key,[]).filter(x=>x.id!==id));}
+function editEntity(schema,data,title,onSave){
+  VIRTUAL[schema.id]=schema;
+  const ui=buildFormUI(schema,data||{},0);
+  openDialog(ui.el,{title,footer:d=>[
+    h('button',{type:'button',class:'btn primary',onclick:()=>{
+      if(!ui.validate()){toast('لطفاً خطاها را برطرف کنید');return;}
+      if(onSave(ui.get())!==false)d.close();}},'ذخیره'),
+    h('button',{type:'button',class:'btn',onclick:()=>d.close()},'انصراف')]});
+}
+function entityCard(title,sub,{onEdit,onDelete,badge,body}){
+  return h('div',{class:'card'},
+    h('div',{class:'card-top'},h('div',{},h('h2',{},title),sub?h('p',{class:'muted sm'},sub):null),badge?h('span',{class:'badge'},badge):null),
+    body||null,
+    h('div',{class:'btn-row'},h('button',{class:'btn',onclick:onEdit},'ویرایش'),h('button',{class:'btn danger',onclick:onDelete},'حذف')));
+}
+const fab=(label,fn)=>h('button',{class:'fab',onclick:fn},label);
+function download(name,text,type){
+  const a=h('a',{href:URL.createObjectURL(new Blob([text],{type})),download:name});
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
 
+/* ---- dashboard ---- */
 function viewHome(){
+  const forms=Store.forms,recs=Store.records;
+  const total=forms.reduce((n,f)=>n+(recs[f.id]||[]).length,0);
+  const st=p=>{const c=DB.get(p,{});return c.enabled&&c.token?'فعال':'غیرفعال';};
+  const info={
+    forms:`${fa(forms.length)} فرم، ${fa(total)} رکورد`,
+    reports:`${fa(DB.get('reports',[]).length)} گزارش ذخیره‌شده`,
+    users:`${fa(DB.get('users',[]).length)} کاربر، ${fa(DB.get('roles',[]).length)} نقش`,
+    process:`${fa(DB.get('processes',[]).length)} فرآیند`,
+    messenger:`بله: ${st('bale')}، تلگرام: ${st('telegram')}`,
+    bale:st('bale'),telegram:st('telegram'),
+    backup:DB.get('meta',{}).lastBackup?'آخرین: '+fa(DB.get('meta',{}).lastBackup):'هنوز پشتیبان نگرفته‌اید',
+    update:'نسخهٔ '+fa(APP_VERSION),settings:'ظاهر و رفتار برنامه',about:'دربارهٔ برنامه'
+  };
+  const latest=forms.flatMap(f=>(recs[f.id]||[]).map(r=>({f,r}))).sort((a,b)=>b.r.createdAt-a.r.createdAt).slice(0,5);
+  page({title:appName()},
+    h('div',{class:'tiles'},MENU.slice(1).map(m=>h('a',{class:'tile',href:m[3]},h('span',{class:'tile-ic'},m[2]),h('b',{},m[1]),h('span',{class:'muted sm'},info[m[0]]||'')))),
+    h('h3',{},'آخرین رکوردها'),
+    latest.length?latest.map(x=>h('a',{class:'card',style:'display:block',href:`#/records/${x.f.id}`},h('b',{},x.f.title),' ',h('span',{class:'muted sm'},fmtDT(x.r.createdAt)),h('p',{class:'sm muted'},summarize(x.f,x.r.data)||'—'))):h('div',{class:'empty sm'},'هنوز رکوردی ثبت نشده است.'));
+}
+
+/* ---- forms management ---- */
+function viewForms(){
   const forms=Store.forms,recs=Store.records;
   const list=forms.length?forms.map(f=>h('div',{class:'card'},
     h('div',{class:'card-top'},h('div',{},h('h2',{},f.title),f.description?h('p',{class:'muted sm'},f.description):null),h('span',{class:'badge'},`${fa(f.fields.length)} فیلد`)),
@@ -513,35 +642,335 @@ function viewHome(){
       h('a',{class:'btn',href:`#/builder/${f.id}`},'ویرایش فرم'),
       h('button',{class:'btn danger',onclick:()=>delForm(f)},'حذف'))))
     :h('div',{class:'empty'},h('p',{},'هنوز فرمی نساخته‌اید.'),h('p',{},'با دکمهٔ «فرم جدید» شروع کنید.'));
-  const file=h('input',{type:'file',accept:'application/json',hidden:true,onchange:importBackup});
-  const inst=h('button',{id:'install',class:'btn',hidden:!deferredPrompt,onclick:async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;inst.hidden=true;}},'نصب برنامه');
-  page({title:'فرم‌ساز'},list,
-    h('div',{class:'foot'},
-      h('button',{class:'btn',onclick:exportBackup},'پشتیبان‌گیری'),
-      h('button',{class:'btn',onclick:()=>file.click()},'بازیابی'),inst,file),
-    h('a',{class:'fab',href:'#/builder/new'},'＋ فرم جدید'));
+  page({title:'مدیریت فرم‌ها'},list,h('a',{class:'fab',href:'#/builder/new'},'＋ فرم جدید'));
 }
 function delForm(f){
   const users=Store.forms.filter(g=>g.id!==f.id&&g.fields.some(x=>x.type==='subform'&&x.subformId===f.id));
   if(users.length){alert(`این فرم به‌عنوان زیرفرم در این فرم‌ها استفاده شده و حذف نمی‌شود:\n${users.map(u=>u.title).join('، ')}`);return;}
   if(!confirm(`فرم «${f.title}» و همهٔ رکوردهایش حذف شود؟`))return;
   Store.forms=Store.forms.filter(x=>x.id!==f.id);
-  const r=Store.records;delete r[f.id];Store.records=r;viewHome();
+  const r=Store.records;delete r[f.id];Store.records=r;viewForms();
 }
-function download(name,text,type){
-  const a=h('a',{href:URL.createObjectURL(new Blob([text],{type})),download:name});
-  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+
+/* ---- reports & charts ---- */
+const COLORS=['#4f46e5','#16a34a','#f59e0b','#dc2626','#0891b2','#9333ea','#db2777','#65a30d','#ea580c','#475569'];
+function aggregate(f,recs){
+  const vals=recs.map(r=>r.data[f.id]);
+  const m=new Map();const inc=k=>m.set(k,(m.get(k)||0)+1);const t=f.type;
+  if(t==='checkboxes')vals.forEach(v=>(v||[]).forEach(inc));
+  else if(t==='boolean')vals.forEach(v=>inc(v?'بله':'خیر'));
+  else if(t==='jdate')vals.forEach(v=>{if(v)inc(String(v).slice(0,7).replace('-','/'));});
+  else if(t==='number'||t==='range'){
+    const nums=vals.filter(v=>typeof v==='number');
+    if(!nums.length)return [];
+    const mn=Math.min(...nums),mx=Math.max(...nums),distinct=new Set(nums).size;
+    if(distinct<=8)nums.forEach(v=>inc(v));
+    else{
+      const w=(mx-mn)/6||1;const bins=Array.from({length:6},(_,i)=>({label:`${+(mn+i*w).toFixed(1)} تا ${+(mn+(i+1)*w).toFixed(1)}`,count:0}));
+      nums.forEach(v=>{bins[Math.min(5,Math.floor((v-mn)/w))].count++;});return bins;
+    }
+  }else vals.forEach(v=>{if(!isEmpty(v))inc(String(v));});
+  let rows=[...m].map(([label,count])=>({label:String(label),count}));
+  if(t==='jdate'||t==='rating'||t==='number'||t==='range')rows.sort((a,b)=>a.label.localeCompare(b.label,undefined,{numeric:true}));
+  else rows.sort((a,b)=>b.count-a.count);
+  return rows;
 }
-function exportBackup(){download('formbuilder-backup.json',JSON.stringify({app:'formbuilder',forms:Store.forms,records:Store.records},null,1),'application/json');}
+function barChart(rows){
+  const mx=Math.max(1,...rows.map(r=>r.count));
+  return h('div',{class:'bars'},rows.map((r,i)=>h('div',{class:'bar-row'},
+    h('span',{class:'bar-l'},fa(r.label)),
+    h('div',{class:'bar-track'},(()=>{const b=h('div',{class:'bar-fill'});b.style.width=(r.count/mx*100)+'%';b.style.background=COLORS[i%COLORS.length];return b;})()),
+    h('b',{class:'bar-n'},fa(r.count)))));
+}
+function pieChart(rows){
+  const total=rows.reduce((s,r)=>s+r.count,0)||1;let a=-Math.PI/2;const cx=100,cy=100,R=90;let paths='';
+  rows.forEach((r,i)=>{
+    const ang=r.count/total*Math.PI*2,col=COLORS[i%COLORS.length];
+    if(rows.length===1){paths+=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="${col}"/>`;return;}
+    const x1=cx+R*Math.cos(a),y1=cy+R*Math.sin(a),x2=cx+R*Math.cos(a+ang),y2=cy+R*Math.sin(a+ang);
+    paths+=`<path d="M${cx} ${cy}L${x1.toFixed(2)} ${y1.toFixed(2)}A${R} ${R} 0 ${ang>Math.PI?1:0} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}Z" fill="${col}"/>`;a+=ang;
+  });
+  const svg=h('div',{class:'pie'});svg.innerHTML=`<svg viewBox="0 0 200 200" role="img" aria-label="نمودار دایره‌ای">${paths}<circle cx="100" cy="100" r="46" fill="var(--card)"/></svg>`;
+  const legend=h('div',{class:'legend'},rows.map((r,i)=>{const s=h('span',{class:'swatch'});s.style.background=COLORS[i%COLORS.length];return h('div',{},s,' ',fa(r.label),' — ',h('b',{},fa(r.count)),h('span',{class:'muted sm'},` (${fa(Math.round(r.count/total*100))}٪)`));}));
+  return h('div',{class:'pie-wrap'},svg,legend);
+}
+function tableChart(rows){return h('table',{class:'tbl'},h('tbody',{},rows.map(r=>h('tr',{},h('td',{},fa(r.label)),h('td',{},fa(r.count))))));}
+function reportBody(rep){
+  const f=getForm(rep.formId);const fld=f&&f.fields.find(x=>x.id===rep.fieldId);
+  if(!f||!fld)return h('div',{class:'note'},'فرم یا فیلد این گزارش دیگر وجود ندارد.');
+  const recs=recordsOf(f.id);const rows=aggregate(fld,recs);
+  if(!rows.length)return h('div',{class:'empty sm'},'داده‌ای برای نمایش نیست.');
+  const out=h('div',{},h('div',{class:'muted sm'},`${f.title} ← ${fld.label} · ${fa(recs.length)} رکورد`),
+    rep.chart==='pie'?pieChart(rows):rep.chart==='table'?tableChart(rows):barChart(rows));
+  if(['number','range'].includes(fld.type)){
+    const nums=recs.map(r=>r.data[fld.id]).filter(v=>typeof v==='number');
+    if(nums.length){const s=nums.reduce((a,b)=>a+b,0);out.append(h('div',{class:'stats'},
+      [['جمع',s],['میانگین',+(s/nums.length).toFixed(2)],['کمترین',Math.min(...nums)],['بیشترین',Math.max(...nums)]].map(([l,v])=>h('span',{class:'badge'},`${l}: ${fa(v)}`))));}
+  }
+  return out;
+}
+function openReportEditor(rep){
+  const forms=Store.forms;if(!forms.length){toast('ابتدا یک فرم بسازید');return;}
+  const r=rep?{...rep}:{id:uid(),title:'',formId:forms[0].id,fieldId:'',chart:'bar'};
+  if(!forms.some(f=>f.id===r.formId))r.formId=forms[0].id;
+  const usable=f=>f.fields.filter(x=>!['subform','textarea','color'].includes(x.type));
+  const t=h('input',{type:'text',value:r.title,placeholder:'مثلاً: توزیع وضعیت مشتریان'});
+  const fl=h('select',{onchange:()=>{r.fieldId=fl.value;}});
+  const fs=h('select',{onchange:()=>{r.formId=fs.value;fill();}},forms.map(f=>h('option',{value:f.id,selected:f.id===r.formId},f.title)));
+  function fill(){
+    fl.innerHTML='';const cs=usable(getForm(r.formId));
+    if(!cs.some(x=>x.id===r.fieldId))r.fieldId=cs[0]?.id||'';
+    cs.forEach(x=>fl.append(h('option',{value:x.id,selected:x.id===r.fieldId},x.label)));
+  }
+  const ct=h('select',{onchange:()=>{r.chart=ct.value;}},[['bar','نمودار میله‌ای'],['pie','نمودار دایره‌ای'],['table','جدول']].map(([v,l])=>h('option',{value:v,selected:v===r.chart},l)));
+  fill();
+  const row=(l,c)=>h('label',{class:'row'},h('span',{},l),c);
+  openDialog(h('div',{},row('عنوان گزارش',t),row('فرم',fs),row('فیلد مورد تحلیل',fl),row('نوع نمایش',ct)),{title:rep?'ویرایش گزارش':'گزارش جدید',footer:d=>[
+    h('button',{class:'btn primary',onclick:()=>{
+      if(!r.fieldId){toast('این فرم فیلد قابل گزارش ندارد');return;}
+      r.title=t.value.trim()||`${getForm(r.formId).title} — ${fl.selectedOptions[0].textContent}`;upsert('reports',r);d.close();viewReports();}},'ذخیره'),
+    h('button',{class:'btn',onclick:()=>d.close()},'انصراف')]});
+}
+function viewReports(){
+  const forms=Store.forms,recs=Store.records;
+  const overview={formId:'',chart:'bar'};
+  const rows=forms.map(f=>({label:f.title,count:(recs[f.id]||[]).length})).filter(x=>x.count>0);
+  const saved=DB.get('reports',[]);
+  page({title:'گزارش‌ها و نمودارها'},
+    h('div',{class:'card'},h('h2',{},'تعداد رکورد هر فرم'),rows.length?barChart(rows):h('div',{class:'empty sm'},'هنوز رکوردی ثبت نشده است.')),
+    saved.length?saved.map(rep=>entityCard(rep.title,null,{onEdit:()=>openReportEditor(rep),onDelete:()=>{if(confirm('گزارش حذف شود؟')){removeFrom('reports',rep.id);viewReports();}},body:h('div',{style:'margin-top:8px'},reportBody(rep))}))
+      :h('div',{class:'empty sm'},'گزارش ذخیره‌شده‌ای ندارید. با دکمهٔ «گزارش جدید» بسازید.'),
+    fab('＋ گزارش جدید',()=>openReportEditor(null)));
+}
+
+/* ---- users & roles ---- */
+function userSchema(){return {id:'__user',title:'کاربر',fields:[
+  F('name','نام و نام خانوادگی','text',{required:true}),F('username','نام کاربری','text',{required:true}),
+  F('phone','موبایل','tel'),F('role','نقش','select',{required:true,options:DB.get('roles',[]).map(r=>r.name)}),
+  F('active','فعال','boolean'),F('bale','شناسهٔ چت بله','text'),F('tg','شناسهٔ چت تلگرام','text')]};}
+function roleSchema(){return {id:'__role',title:'نقش',fields:[
+  F('name','نام نقش','text',{required:true}),F('perms','دسترسی‌ها','checkboxes',{options:PERMS.map(p=>p[1])})]};}
+function viewUsers(tab){
+  seed();tab=tab==='roles'?'roles':'users';
+  const tabs=h('div',{class:'btn-row',style:'margin:0 0 12px'},
+    h('a',{class:'btn'+(tab==='users'?' primary':''),href:'#/users'},'کاربران'),
+    h('a',{class:'btn'+(tab==='roles'?' primary':''),href:'#/users/roles'},'نقش‌ها'));
+  const note=h('div',{class:'note',style:'margin-bottom:12px'},'فعلاً فقط تعریف کاربران و نقش‌ها انجام می‌شود؛ ورود به سیستم و اعمال دسترسی‌ها در مرحلهٔ بعد اضافه می‌شود.');
+  if(tab==='users'){
+    const us=DB.get('users',[]);
+    const open=u=>editEntity(userSchema(),u||{active:true},u?'ویرایش کاربر':'کاربر جدید',d=>{
+      if(DB.get('users',[]).some(x=>x.username===d.username&&x.id!==u?.id)){toast('این نام کاربری تکراری است');return false;}
+      upsert('users',{...(u||{}),...d,id:u?.id||uid()});viewUsers('users');});
+    page({title:'کاربران و نقش‌ها'},tabs,note,
+      us.length?us.map(u=>entityCard(u.name,`@${u.username}${u.phone?' · '+fa(u.phone):''}`,{badge:u.active?u.role:'غیرفعال',onEdit:()=>open(u),onDelete:()=>{if(confirm('کاربر حذف شود؟')){removeFrom('users',u.id);viewUsers('users');}}}))
+        :h('div',{class:'empty'},'هنوز کاربری تعریف نشده است.'),
+      fab('＋ کاربر جدید',()=>open(null)));
+  }else{
+    const rs=DB.get('roles',[]);
+    const toLabels=ks=>PERMS.filter(p=>(ks||[]).includes(p[0])).map(p=>p[1]);
+    const open=r=>editEntity(roleSchema(),r?{name:r.name,perms:toLabels(r.perms)}:{perms:[]},r?'ویرایش نقش':'نقش جدید',d=>{
+      const perms=PERMS.filter(p=>d.perms.includes(p[1])).map(p=>p[0]);
+      if(DB.get('roles',[]).some(x=>x.name===d.name&&x.id!==r?.id)){toast('این نام تکراری است');return false;}
+      if(r&&r.name!==d.name)DB.set('users',DB.get('users',[]).map(u=>u.role===r.name?{...u,role:d.name}:u));
+      upsert('roles',{id:r?.id||uid(),name:d.name,perms});viewUsers('roles');});
+    page({title:'کاربران و نقش‌ها'},tabs,note,
+      rs.map(r=>entityCard(r.name,toLabels(r.perms).join('، ')||'بدون دسترسی',{badge:`${fa(DB.get('users',[]).filter(u=>u.role===r.name).length)} کاربر`,onEdit:()=>open(r),onDelete:()=>{
+        if(DB.get('users',[]).some(u=>u.role===r.name)){alert('این نقش به کاربرانی داده شده و حذف نمی‌شود.');return;}
+        if(confirm('نقش حذف شود؟')){removeFrom('roles',r.id);viewUsers('roles');}}})),
+      fab('＋ نقش جدید',()=>open(null)));
+  }
+}
+
+/* ---- processes ---- */
+function procSchema(){
+  const roles=DB.get('roles',[]).map(r=>r.name),forms=Store.forms.map(f=>f.title);
+  VIRTUAL.__step={id:'__step',title:'مرحله',fields:[
+    F('title','عنوان مرحله','text',{required:true}),
+    F('role','نقش مسئول','select',{options:roles}),
+    F('action','نوع اقدام','select',{required:true,options:['ثبت اطلاعات','تأیید / رد','اطلاع‌رسانی']}),
+    F('form','فرم مرتبط (اختیاری)','select',{options:forms}),
+    F('notify','ارسال پیام در پیام‌رسان','boolean')]};
+  return {id:'__proc',title:'فرآیند',fields:[
+    F('name','نام فرآیند','text',{required:true}),F('description','توضیحات','textarea'),
+    F('trigger','شروع فرآیند','select',{required:true,options:['دستی','پس از ثبت رکورد']}),
+    F('steps','مراحل','subform',{subformId:'__step',mode:'inline',multiple:true,required:true})]};
+}
+function viewProcess(){
+  const ps=DB.get('processes',[]);
+  const open=p=>editEntity(procSchema(),p||{trigger:'دستی',steps:[]},p?'ویرایش فرآیند':'فرآیند جدید',d=>{upsert('processes',{...(p||{}),...d,id:p?.id||uid()});viewProcess();});
+  page({title:'تعریف فرآیند'},
+    h('div',{class:'note',style:'margin-bottom:12px'},'در این مرحله مراحل فرآیند تعریف و ذخیره می‌شود. اجرای خودکار فرآیند، ارجاع بین کاربران و گردش کار در مرحلهٔ بعد اضافه می‌شود.'),
+    ps.length?ps.map(p=>entityCard(p.name,p.description||null,{badge:p.trigger,onEdit:()=>open(p),onDelete:()=>{if(confirm('فرآیند حذف شود؟')){removeFrom('processes',p.id);viewProcess();}},
+      body:h('ol',{class:'steps'},(p.steps||[]).map(s=>h('li',{},h('b',{},s.title),h('span',{class:'muted sm'},` — ${s.action}${s.role?' · '+s.role:''}${s.form?' · فرم «'+s.form+'»':''}${s.notify?' · 📨':''}`))))}))
+      :h('div',{class:'empty'},'هنوز فرآیندی تعریف نشده است.'),
+    fab('＋ فرآیند جدید',()=>open(null)));
+}
+
+/* ---- messengers ---- */
+const PLATFORMS={bale:{name:'بله',base:'https://tapi.bale.ai',how:'در بله با ربات «@botfather» یک ربات بسازید و توکن را اینجا وارد کنید. شناسهٔ چت را می‌توانید از پیام‌های دریافتی ربات (getUpdates) به‌دست آورید.'},
+  telegram:{name:'تلگرام',base:'https://api.telegram.org',how:'در تلگرام با «@BotFather» ربات بسازید و توکن را وارد کنید. اگر دسترسی مستقیم به تلگرام محدود است، آدرس API را با یک واسط/پروکسی جایگزین کنید.'}};
+async function botCall(p,method,body){
+  const c=DB.get(p,{});if(!c.token)throw new Error('توکن ربات وارد نشده است');
+  const base=(c.baseUrl||PLATFORMS[p].base).replace(/\/+$/,'');
+  const res=await fetch(`${base}/bot${c.token}/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body||{})});
+  const j=await res.json().catch(()=>({}));
+  if(!res.ok||j.ok===false)throw new Error(j.description||('خطای HTTP '+res.status));
+  return j.result;
+}
+function sendMsg(p,text,chatId){
+  const id=chatId||DB.get(p,{}).chatId;if(!id)return Promise.reject(new Error('شناسهٔ چت وارد نشده است'));
+  return botCall(p,'sendMessage',{chat_id:id,text});
+}
+async function broadcast(text){
+  const out=[];
+  for(const p of Object.keys(PLATFORMS)){
+    const c=DB.get(p,{});if(!c.enabled||!c.token)continue;
+    try{await sendMsg(p,text);out.push(`${PLATFORMS[p].name}: ارسال شد`);}catch(e){out.push(`${PLATFORMS[p].name}: ${e.message}`);}
+  }
+  return out;
+}
+function notifyRecord(form,rec){
+  const m=DB.get('messenger',{});if(!m.onRecord)return;
+  const text=(m.template||'رکورد جدید در «{form}»\n{summary}').replace('{form}',form.title).replace('{summary}',summarize(form,rec.data).replace(/[⁦-⁩]/g,''));
+  broadcast(text).catch(()=>{});
+}
+function viewPlatform(p){
+  const P=PLATFORMS[p];
+  const schema={id:'__'+p,title:P.name,fields:[
+    F('enabled','فعال باشد','boolean'),
+    F('token','توکن ربات','text',{placeholder:'123456:ABC-DEF…'}),
+    F('chatId','شناسهٔ چت پیش‌فرض (کاربر / گروه / کانال)','text'),
+    F('baseUrl','آدرس API (اختیاری)','url',{placeholder:P.base,help:'برای استفاده از واسط یا پروکسی، آدرس پایه را جایگزین کنید.'})]};
+  VIRTUAL[schema.id]=schema;
+  const ui=buildFormUI(schema,DB.get(p,{enabled:false}),0);
+  const out=h('div',{class:'note',hidden:true});
+  const say=(t,bad)=>{out.hidden=false;out.textContent=t;out.style.color=bad?'var(--danger)':'';};
+  const saveCfg=()=>{if(!ui.validate())return false;DB.set(p,ui.get());return true;};
+  const run=(label,fn)=>async()=>{if(!saveCfg())return;say('در حال '+label+'…');try{say(await fn());}catch(e){say('خطا: '+e.message+' (در صورت خطای شبکه یا CORS از یک واسط سروری استفاده کنید)',true);}};
+  page({title:'تنظیمات '+P.name},
+    h('div',{class:'note',style:'margin-bottom:12px'},P.how),
+    h('div',{class:'card'},ui.el),
+    h('div',{class:'btn-row',style:'margin-bottom:12px'},
+      h('button',{class:'btn primary',onclick:()=>{if(saveCfg())toast('ذخیره شد');}},'ذخیره'),
+      h('button',{class:'btn',onclick:run('بررسی اتصال',async()=>{const r=await botCall(p,'getMe');return `اتصال برقرار است ✓ — ربات: ${r.first_name||''} (@${r.username||'?'})`;})},'بررسی اتصال'),
+      h('button',{class:'btn',onclick:run('ارسال',async()=>{await sendMsg(p,`پیام آزمایشی از «${appName()}» ✅`);return 'پیام آزمایشی ارسال شد ✓';})},'ارسال پیام آزمایشی')),
+    out,
+    h('div',{class:'note sm'},'توکن فقط روی همین دستگاه ذخیره می‌شود. برای محیط عملیاتی، ارسال پیام از طریق یک سرور واسط توصیه می‌شود.'));
+}
+function viewMessenger(){
+  const m=DB.get('messenger',{onRecord:false,template:'📝 رکورد جدید در «{form}»\n{summary}'});
+  const schema={id:'__msgr',title:'پیام‌رسان',fields:[
+    F('onRecord','ارسال پیام پس از ثبت هر رکورد جدید','boolean'),
+    F('template','قالب پیام','textarea',{help:'متغیرها: {form} عنوان فرم، {summary} خلاصهٔ رکورد'})]};
+  VIRTUAL.__msgr=schema;
+  const ui=buildFormUI(schema,m,0);
+  const out=h('div',{class:'note',hidden:true});
+  const cards=Object.keys(PLATFORMS).map(p=>{const c=DB.get(p,{});const on=c.enabled&&c.token;
+    return h('div',{class:'card'},h('div',{class:'card-top'},h('h2',{},PLATFORMS[p].name),h('span',{class:'badge'},on?'فعال':c.token?'غیرفعال':'تنظیم نشده')),
+      h('div',{class:'btn-row'},h('a',{class:'btn',href:'#/'+p},'تنظیمات '+PLATFORMS[p].name)));});
+  page({title:'اتصال به پیام‌رسان'},cards,
+    h('div',{class:'card'},h('h2',{},'رویدادها'),ui.el),
+    h('div',{class:'btn-row'},
+      h('button',{class:'btn primary',onclick:()=>{if(ui.validate()){DB.set('messenger',ui.get());toast('ذخیره شد');}}},'ذخیره'),
+      h('button',{class:'btn',onclick:async()=>{out.hidden=false;out.textContent='در حال ارسال…';const r=await broadcast(`پیام آزمایشی از «${appName()}» ✅`);out.textContent=r.length?r.join('\n'):'هیچ پیام‌رسان فعالی تنظیم نشده است.';}},'ارسال پیام آزمایشی به همه')),
+    out);
+}
+
+/* ---- backup & restore ---- */
+const BACKUP_KEYS=['forms','records','users','roles','processes','reports','settings','messenger','bale','telegram'];
+function exportBackup(withSecrets){
+  const data={};
+  BACKUP_KEYS.forEach(k=>{let v=DB.get(k,null);if(v==null)return;if(!withSecrets&&(k==='bale'||k==='telegram'))v={...v,token:''};data[k]=v;});
+  const t=todayJ(),stamp=fmtJ(t.jy,t.jm,t.jd);
+  download(`formbuilder-backup-${stamp}.json`,JSON.stringify({app:'formbuilder',version:APP_VERSION,date:Date.now(),data},null,1),'application/json');
+  DB.set('meta',{...DB.get('meta',{}),lastBackup:stamp.replace(/-/g,'/')});
+}
 function importBackup(e){
-  const file=e.target.files[0];if(!file)return;
+  const file=e.target.files[0];e.target.value='';if(!file)return;
   file.text().then(t=>{
     const d=JSON.parse(t);
-    if(!d||!Array.isArray(d.forms)||typeof d.records!=='object')throw 0;
+    const data=d.data||(Array.isArray(d.forms)?{forms:d.forms,records:d.records||{}}:null);
+    if(!data||!Array.isArray(data.forms))throw 0;
     if(!confirm('اطلاعات فعلی با پشتیبان جایگزین شود؟'))return;
-    Store.forms=d.forms;Store.records=d.records;toast('بازیابی شد');viewHome();
+    BACKUP_KEYS.forEach(k=>{
+      if(!(k in data))return;
+      let v=data[k];
+      if((k==='bale'||k==='telegram')&&v&&!v.token)v={...v,token:DB.get(k,{}).token||''};
+      DB.set(k,v);
+    });
+    toast('بازیابی شد');applySettings();route();
   }).catch(()=>toast('فایل پشتیبان معتبر نیست'));
 }
+function viewBackup(){
+  const secrets=h('input',{type:'checkbox'});
+  const file=h('input',{type:'file',accept:'application/json,.json',hidden:true,onchange:importBackup});
+  const last=DB.get('meta',{}).lastBackup;
+  const forms=Store.forms,recs=Store.records;
+  const total=forms.reduce((n,f)=>n+(recs[f.id]||[]).length,0);
+  page({title:'پشتیبان‌گیری و بازیابی'},
+    h('div',{class:'card'},h('h2',{},'وضعیت داده‌ها'),
+      h('p',{class:'muted'},`${fa(forms.length)} فرم · ${fa(total)} رکورد · ${fa(DB.get('users',[]).length)} کاربر · ${fa(DB.get('processes',[]).length)} فرآیند · ${fa(DB.get('reports',[]).length)} گزارش`),
+      h('p',{class:'muted sm'},last?'آخرین پشتیبان‌گیری: '+fa(last):'هنوز پشتیبان‌گیری نشده است.')),
+    h('div',{class:'card'},h('h2',{},'پشتیبان‌گیری'),
+      h('label',{class:'chk'},secrets,'توکن ربات‌ها هم در فایل باشد'),
+      h('div',{class:'btn-row'},h('button',{class:'btn primary',onclick:()=>{exportBackup(secrets.checked);viewBackup();}},'دریافت فایل پشتیبان'))),
+    h('div',{class:'card'},h('h2',{},'بازیابی'),h('p',{class:'muted sm'},'اطلاعات فعلی با محتوای فایل جایگزین می‌شود.'),
+      h('div',{class:'btn-row'},h('button',{class:'btn',onclick:()=>file.click()},'انتخاب فایل پشتیبان'),file)),
+    h('div',{class:'card'},h('h2',{style:'color:var(--danger)'},'پاک‌سازی'),
+      h('div',{class:'btn-row'},h('button',{class:'btn danger',onclick:()=>{
+        if(confirm('همهٔ داده‌های برنامه پاک شود؟ این کار قابل بازگشت نیست.')&&confirm('مطمئن هستید؟')){BACKUP_KEYS.concat('meta').forEach(k=>localStorage.removeItem('fb.'+k));applySettings();location.hash='#/';route();toast('پاک شد');}}},'پاک کردن همهٔ داده‌ها'))));
+}
+
+/* ---- update ---- */
+let swReg=null;
+function viewUpdate(){
+  const status=h('div',{class:'note'},'برای بررسی نسخهٔ جدید، دکمهٔ زیر را بزنید.');
+  const apply=h('button',{class:'btn primary',hidden:true,onclick:()=>{swReg&&swReg.waiting&&swReg.waiting.postMessage({type:'SKIP_WAITING'});}},'اعمال نسخهٔ جدید');
+  const check=async()=>{
+    if(!('serviceWorker' in navigator)){status.textContent='این مرورگر از سرویس‌ورکر پشتیبانی نمی‌کند.';return;}
+    const reg=swReg||await navigator.serviceWorker.getRegistration();
+    if(!reg){status.textContent='بروزرسانی خودکار فقط روی HTTPS (یا localhost) فعال است.';return;}
+    swReg=reg;status.textContent='در حال بررسی…';
+    try{await reg.update();}catch{status.textContent='اتصال به سرور برقرار نشد.';return;}
+    await new Promise(r=>setTimeout(r,1500));
+    if(reg.waiting){status.textContent='نسخهٔ جدید آماده است.';apply.hidden=false;}
+    else if(reg.installing)status.textContent='در حال دریافت نسخهٔ جدید… چند ثانیه بعد دوباره بررسی کنید.';
+    else status.textContent='شما از آخرین نسخه استفاده می‌کنید ✓';
+  };
+  const inst=h('button',{class:'btn',hidden:!deferredPrompt,onclick:async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;inst.hidden=true;}},'نصب برنامه روی دستگاه');
+  window.__showInstall=()=>{inst.hidden=false;};
+  page({title:'بروزرسانی'},
+    h('div',{class:'card'},h('h2',{},'نسخهٔ فعلی'),h('p',{},fa(APP_VERSION))),
+    h('div',{class:'card'},status,h('div',{class:'btn-row'},h('button',{class:'btn primary',onclick:check},'بررسی بروزرسانی'),apply,inst)),
+    h('div',{class:'card'},h('h2',{},'رفع مشکل'),h('p',{class:'muted sm'},'پاک کردن حافظهٔ پنهان برنامه (داده‌های شما پاک نمی‌شود) و بارگذاری مجدد.'),
+      h('div',{class:'btn-row'},h('button',{class:'btn',onclick:async()=>{if('caches' in window)for(const k of await caches.keys())await caches.delete(k);location.reload();}},'پاک کردن کش و بارگذاری مجدد'))));
+}
+
+/* ---- settings & about ---- */
+function viewSettings(){
+  const s=DB.get('settings',{theme:'خودکار',fontSize:15,appName:'فرم‌ساز'});
+  const schema={id:'__settings',title:'تنظیمات',fields:[
+    F('appName','نام برنامه','text'),
+    F('theme','حالت نمایش','select',{options:['خودکار','روشن','تیره']}),
+    F('fontSize','اندازهٔ متن','range',{min:12,max:20,step:1})]};
+  VIRTUAL.__settings=schema;
+  const ui=buildFormUI(schema,s,0);
+  page({title:'تنظیمات برنامه'},h('div',{class:'card'},ui.el),
+    h('div',{class:'btn-row'},h('button',{class:'btn primary',onclick:()=>{
+      const d=ui.get();d.theme=d.theme||'خودکار';d.appName=d.appName||'فرم‌ساز';DB.set('settings',d);applySettings();markActive('settings');toast('ذخیره شد');}},'ذخیره')));
+}
+function viewAbout(){
+  page({title:'درباره ما'},
+    h('div',{class:'card about'},h('img',{src:'icon-192.png',width:72,height:72,alt:'',style:'border-radius:16px'}),h('h2',{},appName()),h('p',{class:'muted'},'نسخهٔ '+fa(APP_VERSION)),
+      h('p',{},'سامانهٔ فرم‌ساز، گزارش‌گیری و فرآیندها؛ اجرا روی مرورگر و قابل نصب به‌صورت PWA.')),
+    h('div',{class:'card'},h('h2',{},'امکانات'),h('ul',{class:'steps'},
+      ['فرم‌ساز با فیلدهای متنوع و تقویم شمسی','زیرفرم‌های دیالوگی و درون‌خط (تک‌رکوردی و چندرکوردی)','گزارش و نمودار','کاربران، نقش‌ها و تعریف فرآیند','اتصال به بله و تلگرام','پشتیبان‌گیری، بازیابی و بروزرسانی'].map(x=>h('li',{},x)))),
+    h('div',{class:'card'},h('h2',{},'تماس با ما'),h('p',{class:'muted'},'اطلاعات تماس بعداً تکمیل می‌شود.')),
+    h('div',{class:'muted sm',style:'text-align:center'},'فونت فارسی: وزیرمتن (Vazirmatn) — مجوز SIL OFL'));
+}
+
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;window.__showInstall&&window.__showInstall();});
 
 /* builder */
 function viewBuilder(id){
@@ -571,10 +1000,10 @@ function viewBuilder(id){
     draft.title=draft.title.trim();
     const forms=Store.forms;const i=forms.findIndex(x=>x.id===draft.id);
     if(i>=0)forms[i]=draft;else forms.push(draft);
-    Store.forms=forms;toast('فرم ذخیره شد');location.hash='#/';
+    Store.forms=forms;toast('فرم ذخیره شد');location.hash='#/forms';
   }
   drawList();
-  page({title:ex?'ویرایش فرم':'فرم جدید',back:'#/',actions:[h('button',{class:'icon-btn','aria-label':'ذخیره',onclick:saveForm},'✓')]},
+  page({title:ex?'ویرایش فرم':'فرم جدید',back:'#/forms',actions:[h('button',{class:'icon-btn','aria-label':'ذخیره',onclick:saveForm},'✓')]},
     h('div',{class:'card'},
       h('label',{class:'row'},h('span',{},'عنوان فرم'),h('input',{type:'text',value:draft.title,placeholder:'مثلاً: ثبت مشتری',oninput:e=>{draft.title=e.target.value;}})),
       h('label',{class:'row'},h('span',{},'توضیحات (اختیاری)'),h('input',{type:'text',value:draft.description||'',oninput:e=>{draft.description=e.target.value;}}))),
@@ -638,11 +1067,11 @@ function viewFill(fid,rid){
     if(!ui.validate()){toast('لطفاً خطاهای فرم را برطرف کنید');return;}
     const arr=recordsOf(fid);
     if(rec){const i=arr.findIndex(r=>r.id===rid);arr[i]={...rec,data:ui.get(),updatedAt:Date.now()};}
-    else arr.push({id:uid(),createdAt:Date.now(),data:ui.get()});
+    else{const nr={id:uid(),createdAt:Date.now(),data:ui.get()};arr.push(nr);setTimeout(()=>notifyRecord(f,nr),0);}
     setRecords(fid,arr);toast('ذخیره شد');
     if(again)route();else location.hash=`#/records/${fid}`;
   };
-  page({title:f.title,back:rec?`#/records/${fid}`:'#/'},
+  page({title:f.title,back:rec?`#/records/${fid}`:'#/forms'},
     f.description?h('p',{class:'muted'},f.description):null,
     h('div',{class:'card'},ui.el),
     h('div',{class:'btn-row'},
@@ -669,7 +1098,7 @@ function viewRecords(fid){
       h('a',{class:'btn',href:`#/fill/${fid}/${r.id}`},'ویرایش'),
       h('button',{class:'btn danger',onclick:()=>{if(confirm('این رکورد حذف شود؟')){setRecords(fid,recordsOf(fid).filter(x=>x.id!==r.id));viewRecords(fid);}}},'حذف'))))
     :h('div',{class:'empty'},'هنوز رکوردی ثبت نشده است.');
-  page({title:`رکوردهای ${f.title}`,back:'#/'},
+  page({title:`رکوردهای ${f.title}`,back:'#/forms'},
     h('div',{class:'btn-row',style:'margin:0 0 12px'},
       h('a',{class:'btn primary',href:`#/fill/${fid}`},'＋ رکورد جدید'),
       recs.length?h('button',{class:'btn',onclick:exportCsv},'خروجی CSV'):null,
@@ -679,17 +1108,42 @@ function viewRecords(fid){
 
 /* router */
 function route(){
-  const [,a,b,c]=(location.hash||'#/').split('/');
+  seed();
+  const [,a,b]=(location.hash||'#/').split('/');
+  const c=(location.hash||'#/').split('/')[3];
+  closeDrawer();
+  markActive(({'':'home',builder:'forms',fill:'forms',records:'forms'})[a]??a);
   try{
-    if(a==='builder')viewBuilder(b);
-    else if(a==='fill')viewFill(b,c);
-    else if(a==='records')viewRecords(b);
-    else viewHome();
+    switch(a){
+      case 'forms':viewForms();break;
+      case 'builder':viewBuilder(b);break;
+      case 'fill':viewFill(b,c);break;
+      case 'records':viewRecords(b);break;
+      case 'reports':viewReports();break;
+      case 'users':viewUsers(b);break;
+      case 'process':viewProcess();break;
+      case 'messenger':viewMessenger();break;
+      case 'bale':viewPlatform('bale');break;
+      case 'telegram':viewPlatform('telegram');break;
+      case 'backup':viewBackup();break;
+      case 'update':viewUpdate();break;
+      case 'settings':viewSettings();break;
+      case 'about':viewAbout();break;
+      default:viewHome();
+    }
   }catch(e){console.error(e);page({title:'خطا',back:'#/'},h('div',{class:'empty'},'خطایی رخ داد: '+e.message));}
 }
 window.addEventListener('hashchange',route);
-route();
-if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+buildDrawer();applySettings();route();
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
+  const had=!!navigator.serviceWorker.controller;let reloading=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!reloading){reloading=true;location.reload();}});
+  navigator.serviceWorker.register('sw.js').then(r=>{
+    swReg=r;
+    r.addEventListener('updatefound',()=>{const w=r.installing;w&&w.addEventListener('statechange',()=>{
+      if(w.state==='installed'&&navigator.serviceWorker.controller)toast('نسخهٔ جدید آماده است؛ از منوی «بروزرسانی» اعمال کنید');});});
+  }).catch(()=>{});
+}
 </script>
 </body>
 </html>
