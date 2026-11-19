@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>فرم‌ساز</title>
+<title>مدیریت سیستم‌های اطلاعاتی</title>
 <style>
 @font-face{font-family:"Vazirmatn Local";src:url("fonts/Vazirmatn-variable.woff2") format("woff2");font-weight:100 900;font-display:swap}
 :root{--bg:#f4f5fa;--card:#fff;--fg:#1f2430;--muted:#6b7280;--line:#e3e5ee;--pri:#4f46e5;--pri-fg:#fff;--danger:#dc2626;--ok:#16a34a;--soft:#eef0ff}
@@ -582,7 +582,9 @@ function loadLucide(){
 let icRaf=0;
 new MutationObserver(()=>{if(icRaf)return;icRaf=requestAnimationFrame(()=>{icRaf=0;decorate();renderIcons();});}).observe(document.documentElement,{childList:true,subtree:true});
 
-const appName=()=>DB.get('settings',{}).appName||'فرم‌ساز';
+const DEFAULT_NAME='مدیریت سیستم‌های اطلاعاتی';
+// نام پیش‌فرض قدیمی («فرم‌ساز») که ممکن است در تنظیمات ذخیره شده باشد به نام جدید تبدیل می‌شود
+const appName=()=>{const n=DB.get('settings',{}).appName;return !n||n==='فرم‌ساز'?DEFAULT_NAME:n;};
 const MENU=[
   ['home','خانه','layout-dashboard','#/'],
   ['forms','مدیریت فرم‌ها','file-text','#/forms'],
@@ -1106,7 +1108,8 @@ function viewUpdate(){
 
 /* ---- settings & about ---- */
 function viewSettings(){
-  const s={theme:'خودکار',fontSize:15,appName:'فرم‌ساز',updateInterval:'هر ساعت',...DB.get('settings',{})};
+  const s={theme:'خودکار',fontSize:15,appName:DEFAULT_NAME,updateInterval:'هر ساعت',...DB.get('settings',{})};
+  if(s.appName==='فرم‌ساز')s.appName=DEFAULT_NAME;
   const schema={id:'__settings',title:'تنظیمات',fields:[
     F('appName','نام برنامه','text'),
     F('theme','حالت نمایش','select',{options:['خودکار','روشن','تیره']}),
@@ -1116,12 +1119,12 @@ function viewSettings(){
   const ui=buildFormUI(schema,s,0);
   page({title:'تنظیمات برنامه'},h('div',{class:'card'},ui.el),
     h('div',{class:'btn-row'},h('button',{class:'btn primary',onclick:()=>{
-      const d=ui.get();d.theme=d.theme||'خودکار';d.appName=d.appName||'فرم‌ساز';d.updateInterval=d.updateInterval||'هر ساعت';DB.set('settings',d);applySettings();scheduleUpdateChecks();markActive('settings');toast('ذخیره شد');}},'ذخیره')));
+      const d=ui.get();d.theme=d.theme||'خودکار';d.appName=d.appName||DEFAULT_NAME;d.updateInterval=d.updateInterval||'هر ساعت';DB.set('settings',d);applySettings();scheduleUpdateChecks();markActive('settings');toast('ذخیره شد');}},'ذخیره')));
 }
 function viewAbout(){
   page({title:'درباره ما'},
     h('div',{class:'card about'},h('h2',{},appName()),h('p',{class:'muted'},'نسخهٔ '+fa(APP_VERSION)),
-      h('p',{},'سامانهٔ فرم‌ساز، گزارش‌گیری و فرآیندها؛ اجرا روی مرورگر و قابل نصب به‌صورت PWA.')),
+      h('p',{},'سامانهٔ مدیریت سیستم‌های اطلاعاتی: فرم‌ساز، گزارش‌گیری، کاربران و فرآیندها؛ اجرا روی مرورگر و قابل نصب به‌صورت PWA.')),
     h('div',{class:'card'},h('h2',{},'امکانات'),h('ul',{class:'steps'},
       ['فرم‌ساز با فیلدهای متنوع و تقویم شمسی','زیرفرم‌های دیالوگی و درون‌خط (تک‌رکوردی و چندرکوردی)','گزارش و نمودار','کاربران، نقش‌ها و تعریف فرآیند','اتصال به بله و تلگرام','پشتیبان‌گیری، بازیابی و بروزرسانی'].map(x=>h('li',{},x)))),
     h('div',{class:'card'},h('h2',{},'تماس با ما'),h('p',{class:'muted'},'اطلاعات تماس بعداً تکمیل می‌شود.')),
