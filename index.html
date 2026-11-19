@@ -575,10 +575,9 @@ function decorate(){
   });
 }
 function renderIcons(){if(window.lucide&&lucide.createIcons)lucide.createIcons();}
-function loadScript(src){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=()=>window.lucide?ok():no();s.onerror=no;document.head.append(s);});}
 function loadLucide(){
-  // اول نسخهٔ محلی (برای آفلاین کامل)، در غیر این‌صورت CDN با نسخهٔ ثابت
-  loadScript('vendor/lucide.min.js').catch(()=>loadScript('https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js')).then(renderIcons).catch(()=>{});
+  // آیکون‌ها داخل خود برنامه هستند (icons.js)؛ نه CDN و نه اینترنت لازم است
+  const sc=document.createElement('script');sc.src='icons.js';sc.onload=renderIcons;document.head.append(sc);
 }
 let icRaf=0;
 new MutationObserver(()=>{if(icRaf)return;icRaf=requestAnimationFrame(()=>{icRaf=0;decorate();renderIcons();});}).observe(document.documentElement,{childList:true,subtree:true});
@@ -1126,7 +1125,7 @@ function viewAbout(){
     h('div',{class:'card'},h('h2',{},'امکانات'),h('ul',{class:'steps'},
       ['فرم‌ساز با فیلدهای متنوع و تقویم شمسی','زیرفرم‌های دیالوگی و درون‌خط (تک‌رکوردی و چندرکوردی)','گزارش و نمودار','کاربران، نقش‌ها و تعریف فرآیند','اتصال به بله و تلگرام','پشتیبان‌گیری، بازیابی و بروزرسانی'].map(x=>h('li',{},x)))),
     h('div',{class:'card'},h('h2',{},'تماس با ما'),h('p',{class:'muted'},'اطلاعات تماس بعداً تکمیل می‌شود.')),
-    h('div',{class:'muted sm',style:'text-align:center'},'فونت فارسی: وزیرمتن (Vazirmatn) — مجوز SIL OFL'));
+    h('div',{class:'muted sm',style:'text-align:center'},'فونت فارسی: وزیرمتن (Vazirmatn، مجوز OFL) · آیکون‌ها: Lucide (مجوز ISC)'));
 }
 
 let deferredPrompt=null;
