@@ -77,6 +77,12 @@ p{margin:2px 0}
 .legend{display:flex;flex-direction:column;gap:4px}
 .stats{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .tbl{width:100%;border-collapse:collapse;margin-top:8px}.tbl td{border-bottom:1px solid var(--line);padding:6px 4px}.tbl td:last-child{text-align:left;font-weight:700}
+#upd-banner{position:fixed;z-index:40;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:8px;background:var(--card);color:var(--fg);border:1px solid var(--pri);border-radius:14px;padding:8px 10px 8px 6px;box-shadow:0 8px 26px rgba(0,0,0,.28);max-width:92vw;white-space:nowrap}
+@media (min-width:900px){#upd-banner{left:calc(50% - 145px)}}
+.dr-item.has-update::after{content:"";width:9px;height:9px;border-radius:50%;background:var(--danger);margin-inline-start:auto}
+.menu-btn.has-update{position:relative}
+.menu-btn.has-update::after{content:"";position:absolute;top:6px;left:6px;width:9px;height:9px;border-radius:50%;background:#f59e0b}
+.cl{margin-bottom:10px}
 /* fields */
 .field{margin-bottom:14px}
 .lbl{font-weight:600;margin-bottom:4px}
@@ -528,7 +534,7 @@ function buildSubform(f,value,depth){
 }
 
 /* ---------- pages / shell ---------- */
-const APP_VERSION='0.2.0';
+const APP_VERSION='0.3.0';
 const DB={get:(k,d)=>load('fb.'+k,d),set:(k,v)=>save('fb.'+k,v)};
 const F=(id,label,type,extra)=>({id,label,type,...extra});
 const appName=()=>DB.get('settings',{}).appName||'فرم‌ساز';
@@ -921,43 +927,143 @@ function viewBackup(){
         if(confirm('همهٔ داده‌های برنامه پاک شود؟ این کار قابل بازگشت نیست.')&&confirm('مطمئن هستید؟')){BACKUP_KEYS.concat('meta').forEach(k=>localStorage.removeItem('fb.'+k));applySettings();location.hash='#/';route();toast('پاک شد');}}},'پاک کردن همهٔ داده‌ها'))));
 }
 
-/* ---- update ---- */
+/* ---- update & versioning ---- */
 let swReg=null;
+const INTERVALS={'خاموش':0,'هر ۱۵ دقیقه':15,'هر ساعت':60,'روزانه':1440};
+const intervalMin=()=>{const l=DB.get('settings',{}).updateInterval||'هر ساعت';return INTERVALS[l]??60;};
+const cmpVer=(a,b)=>{const x=String(a).split('.').map(Number),y=String(b).split('.').map(Number);for(let i=0;i<3;i++){const d=(x[i]||0)-(y[i]||0);if(d)return d<0?-1:1;}return 0;};
+const UPD={info:null,available:false,checking:false};
+const setMeta=o=>DB.set('meta',{...DB.get('meta',{}),...o});
+
+async function fetchRemoteVersion(){
+  const r=await fetch(`version.json?t=${Date.now()}`,{cache:'no-store'});
+  if(!r.ok)throw new Error('خطای HTTP '+r.status);
+  const j=await r.json();
+  if(!j||typeof j.version!=='string'||!/^\d+\.\d+\.\d+$/.test(j.version))throw new Error('فایل نسخه نامعتبر است');
+  return j;
+}
+async function checkForUpdate({silent=false}={}){
+  if(UPD.checking)return UPD.info;
+  UPD.checking=true;
+  try{
+    const j=await fetchRemoteVersion();
+    UPD.info=j;UPD.available=cmpVer(j.version,APP_VERSION)>0;
+    setMeta({lastCheck:Date.now()});
+    markUpdateBadge();
+    if(UPD.available&&DB.get('meta',{}).dismissed!==j.version)showUpdateBanner(j);
+    if(!UPD.available)$('#upd-banner')?.remove();
+    return j;
+  }catch(e){if(!silent)throw e;return null;}
+  finally{UPD.checking=false;}
+}
+function markUpdateBadge(){
+  drawerEl&&drawerEl.querySelector('.dr-item[data-id=update]')?.classList.toggle('has-update',UPD.available);
+  document.querySelector('.menu-btn')?.classList.toggle('has-update',UPD.available);
+}
+function showUpdateBanner(j){
+  let b=$('#upd-banner');if(b)b.remove();
+  b=h('div',{id:'upd-banner',role:'status'},
+    h('span',{},`نسخهٔ ${fa(j.version)} آماده است`),
+    h('button',{class:'btn primary',onclick:()=>openUpdateDialog(j)},'مشاهده'),
+    h('button',{class:'icon-btn','aria-label':'بعداً',onclick:()=>{setMeta({dismissed:j.version});b.remove();}},'✕'));
+  document.body.append(b);
+}
+function notesSince(j){return (j.changelog||[]).filter(e=>cmpVer(e.version,APP_VERSION)>0);}
+function changelogNode(entries){
+  return h('div',{},entries.map(e=>h('div',{class:'cl'},h('b',{},'نسخهٔ '+fa(e.version)),' ',h('span',{class:'muted sm'},fa(e.date||'')),
+    h('ul',{class:'steps'},(e.notes||[]).map(n=>h('li',{},n))))));
+}
+function openUpdateDialog(j){
+  const entries=notesSince(j);
+  openDialog(h('div',{},
+    h('p',{},`نسخهٔ فعلی ${fa(APP_VERSION)} ← نسخهٔ جدید ${fa(j.version)}`),
+    entries.length?changelogNode(entries):null,
+    h('div',{class:'note sm'},'با بروزرسانی، برنامه یک‌بار بارگذاری مجدد می‌شود؛ اطلاعات ذخیره‌شده حفظ می‌شود اما فرمی که نیمه‌کاره پر کرده‌اید ذخیره نمی‌شود.')),
+  {title:'نسخهٔ جدید برنامه',footer:d=>[
+    h('button',{class:'btn primary',onclick:()=>{d.close();applyUpdate();}},'بروزرسانی اکنون'),
+    h('button',{class:'btn',onclick:()=>{setMeta({dismissed:j.version});$('#upd-banner')?.remove();d.close();}},'بعداً')]});
+}
+function waitForWaiting(reg,ms){
+  return new Promise(res=>{
+    if(reg.waiting)return res(reg.waiting);
+    const t=setTimeout(()=>res(null),ms);
+    const watch=w=>{if(!w)return;w.addEventListener('statechange',()=>{if(w.state==='installed'){clearTimeout(t);res(reg.waiting||w);}});};
+    watch(reg.installing);
+    reg.addEventListener('updatefound',()=>watch(reg.installing));
+  });
+}
+async function applyUpdate(){
+  toast('در حال بروزرسانی…');
+  try{
+    if('serviceWorker' in navigator){
+      const reg=swReg||await navigator.serviceWorker.getRegistration();
+      if(reg){
+        await reg.update();
+        const w=await waitForWaiting(reg,15000);
+        if(w){w.postMessage({type:'SKIP_WAITING'});return;}  // controllerchange صفحه را بارگذاری مجدد می‌کند
+      }
+    }
+  }catch{}
+  try{if('caches' in window)for(const k of await caches.keys())await caches.delete(k);}catch{}
+  location.reload();
+}
+let updTimer=null;
+function scheduleUpdateChecks(){
+  clearInterval(updTimer);
+  const min=intervalMin();if(!min)return;
+  updTimer=setInterval(()=>{if(navigator.onLine)checkForUpdate({silent:true});},min*60000);
+}
+function checkIfDue(){
+  const min=intervalMin();if(!min||!navigator.onLine)return;
+  if(Date.now()-(DB.get('meta',{}).lastCheck||0)>=min*60000)checkForUpdate({silent:true});
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkIfDue();});
+
 function viewUpdate(){
-  const status=h('div',{class:'note'},'برای بررسی نسخهٔ جدید، دکمهٔ زیر را بزنید.');
-  const apply=h('button',{class:'btn primary',hidden:true,onclick:()=>{swReg&&swReg.waiting&&swReg.waiting.postMessage({type:'SKIP_WAITING'});}},'اعمال نسخهٔ جدید');
-  const check=async()=>{
-    if(!('serviceWorker' in navigator)){status.textContent='این مرورگر از سرویس‌ورکر پشتیبانی نمی‌کند.';return;}
-    const reg=swReg||await navigator.serviceWorker.getRegistration();
-    if(!reg){status.textContent='بروزرسانی خودکار فقط روی HTTPS (یا localhost) فعال است.';return;}
-    swReg=reg;status.textContent='در حال بررسی…';
-    try{await reg.update();}catch{status.textContent='اتصال به سرور برقرار نشد.';return;}
-    await new Promise(r=>setTimeout(r,1500));
-    if(reg.waiting){status.textContent='نسخهٔ جدید آماده است.';apply.hidden=false;}
-    else if(reg.installing)status.textContent='در حال دریافت نسخهٔ جدید… چند ثانیه بعد دوباره بررسی کنید.';
-    else status.textContent='شما از آخرین نسخه استفاده می‌کنید ✓';
-  };
+  const status=h('div',{class:'note'},'');
+  const last=h('p',{class:'muted sm'});
+  const apply=h('button',{class:'btn primary',hidden:true,onclick:()=>UPD.info&&openUpdateDialog(UPD.info)},'مشاهده و بروزرسانی');
+  const log=h('div',{});
   const inst=h('button',{class:'btn',hidden:!deferredPrompt,onclick:async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;inst.hidden=true;}},'نصب برنامه روی دستگاه');
   window.__showInstall=()=>{inst.hidden=false;};
+  function paint(){
+    const lc=DB.get('meta',{}).lastCheck;
+    last.textContent=lc?'آخرین بررسی: '+fmtDT(lc):'هنوز بررسی نشده است.';
+    if(UPD.info){
+      status.textContent=UPD.available?`نسخهٔ جدید ${fa(UPD.info.version)} در دسترس است.`:'شما از آخرین نسخه استفاده می‌کنید ✓';
+      apply.hidden=!UPD.available;
+      log.innerHTML='';log.append(changelogNode((UPD.info.changelog||[]).slice(0,10)));
+    }else status.textContent='برای بررسی نسخهٔ جدید، دکمهٔ زیر را بزنید.';
+  }
+  const check=async()=>{
+    status.textContent='در حال بررسی…';
+    try{await checkForUpdate();}catch(e){status.textContent='بررسی ناموفق بود: '+e.message+' (اتصال اینترنت را بررسی کنید)';return;}
+    paint();
+  };
+  paint();
   page({title:'بروزرسانی'},
-    h('div',{class:'card'},h('h2',{},'نسخهٔ فعلی'),h('p',{},fa(APP_VERSION))),
-    h('div',{class:'card'},status,h('div',{class:'btn-row'},h('button',{class:'btn primary',onclick:check},'بررسی بروزرسانی'),apply,inst)),
+    h('div',{class:'card'},h('h2',{},'نسخهٔ فعلی'),h('p',{style:'font-size:22px;font-weight:700'},fa(APP_VERSION)),
+      h('p',{class:'muted sm'},'بررسی خودکار: '+(DB.get('settings',{}).updateInterval||'هر ساعت')+' (قابل تغییر در تنظیمات برنامه)')),
+    h('div',{class:'card'},status,last,h('div',{class:'btn-row'},h('button',{class:'btn primary',onclick:check},'بررسی بروزرسانی'),apply,inst)),
+    h('div',{class:'card'},h('h2',{},'تاریخچهٔ تغییرات'),log),
     h('div',{class:'card'},h('h2',{},'رفع مشکل'),h('p',{class:'muted sm'},'پاک کردن حافظهٔ پنهان برنامه (داده‌های شما پاک نمی‌شود) و بارگذاری مجدد.'),
       h('div',{class:'btn-row'},h('button',{class:'btn',onclick:async()=>{if('caches' in window)for(const k of await caches.keys())await caches.delete(k);location.reload();}},'پاک کردن کش و بارگذاری مجدد'))));
+  if(!UPD.info)checkForUpdate({silent:true}).then(paint);
 }
 
 /* ---- settings & about ---- */
 function viewSettings(){
-  const s=DB.get('settings',{theme:'خودکار',fontSize:15,appName:'فرم‌ساز'});
+  const s={theme:'خودکار',fontSize:15,appName:'فرم‌ساز',updateInterval:'هر ساعت',...DB.get('settings',{})};
   const schema={id:'__settings',title:'تنظیمات',fields:[
     F('appName','نام برنامه','text'),
     F('theme','حالت نمایش','select',{options:['خودکار','روشن','تیره']}),
+    F('updateInterval','بررسی خودکار بروزرسانی','select',{options:Object.keys(INTERVALS)}),
     F('fontSize','اندازهٔ متن','range',{min:12,max:20,step:1})]};
   VIRTUAL.__settings=schema;
   const ui=buildFormUI(schema,s,0);
   page({title:'تنظیمات برنامه'},h('div',{class:'card'},ui.el),
     h('div',{class:'btn-row'},h('button',{class:'btn primary',onclick:()=>{
-      const d=ui.get();d.theme=d.theme||'خودکار';d.appName=d.appName||'فرم‌ساز';DB.set('settings',d);applySettings();markActive('settings');toast('ذخیره شد');}},'ذخیره')));
+      const d=ui.get();d.theme=d.theme||'خودکار';d.appName=d.appName||'فرم‌ساز';d.updateInterval=d.updateInterval||'هر ساعت';DB.set('settings',d);applySettings();scheduleUpdateChecks();markActive('settings');toast('ذخیره شد');}},'ذخیره')));
 }
 function viewAbout(){
   page({title:'درباره ما'},
@@ -1134,14 +1240,13 @@ function route(){
   }catch(e){console.error(e);page({title:'خطا',back:'#/'},h('div',{class:'empty'},'خطایی رخ داد: '+e.message));}
 }
 window.addEventListener('hashchange',route);
-buildDrawer();applySettings();route();
+buildDrawer();applySettings();route();scheduleUpdateChecks();setTimeout(checkIfDue,3000);
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
   const had=!!navigator.serviceWorker.controller;let reloading=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!reloading){reloading=true;location.reload();}});
   navigator.serviceWorker.register('sw.js').then(r=>{
     swReg=r;
-    r.addEventListener('updatefound',()=>{const w=r.installing;w&&w.addEventListener('statechange',()=>{
-      if(w.state==='installed'&&navigator.serviceWorker.controller)toast('نسخهٔ جدید آماده است؛ از منوی «بروزرسانی» اعمال کنید');});});
+    r.addEventListener('updatefound',()=>{checkForUpdate({silent:true});});
   }).catch(()=>{});
 }
 </script>
