@@ -171,6 +171,7 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.5)}
 <body>
 <div id="app"></div>
 <div id="toast"></div>
+<script src="version.js"></script>
 <script>
 'use strict';
 /*J-START*/
@@ -542,7 +543,6 @@ function buildSubform(f,value,depth){
 }
 
 /* ---------- pages / shell ---------- */
-const APP_VERSION='0.4.0';
 const DB={get:(k,d)=>load('fb.'+k,d),set:(k,v)=>save('fb.'+k,v)};
 const F=(id,label,type,extra)=>({id,label,type,...extra});
 /* ---------- icons (Lucide) ---------- */
@@ -978,15 +978,22 @@ let swReg=null;
 const INTERVALS={'خاموش':0,'هر ۱۵ دقیقه':15,'هر ساعت':60,'روزانه':1440};
 const intervalMin=()=>{const l=DB.get('settings',{}).updateInterval||'هر ساعت';return INTERVALS[l]??60;};
 const cmpVer=(a,b)=>{const x=String(a).split('.').map(Number),y=String(b).split('.').map(Number);for(let i=0;i<3;i++){const d=(x[i]||0)-(y[i]||0);if(d)return d<0?-1:1;}return 0;};
-const UPD={info:null,available:false,checking:false};
+const UPD={info:null,changelog:[],available:false,checking:false};
 const setMeta=o=>DB.set('meta',{...DB.get('meta',{}),...o});
 
 async function fetchRemoteVersion(){
-  const r=await fetch(`version.json?t=${Date.now()}`,{cache:'no-store'});
+  const r=await fetch(`version.js?t=${Date.now()}`,{cache:'no-store'});
   if(!r.ok)throw new Error('خطای HTTP '+r.status);
-  const j=await r.json();
-  if(!j||typeof j.version!=='string'||!/^\d+\.\d+\.\d+$/.test(j.version))throw new Error('فایل نسخه نامعتبر است');
-  return j;
+  const txt=await r.text();
+  const v=txt.match(/APP_VERSION\s*=\s*'(\d+\.\d+\.\d+)'/);
+  if(!v)throw new Error('فایل نسخه نامعتبر است');
+  return {version:v[1],date:(txt.match(/APP_DATE\s*=\s*'([^']*)'/)||[])[1]||''};
+}
+async function fetchChangelog(){
+  for(const u of [`changelog.json?t=${Date.now()}`,'changelog.json']){
+    try{const r=await fetch(u,{cache:'no-store'});if(r.ok){const j=await r.json();if(Array.isArray(j))return j;}}catch{}
+  }
+  return [];
 }
 async function checkForUpdate({silent=false}={}){
   if(UPD.checking)return UPD.info;
@@ -994,6 +1001,7 @@ async function checkForUpdate({silent=false}={}){
   try{
     const j=await fetchRemoteVersion();
     UPD.info=j;UPD.available=cmpVer(j.version,APP_VERSION)>0;
+    UPD.changelog=await fetchChangelog();
     setMeta({lastCheck:Date.now()});
     markUpdateBadge();
     if(UPD.available&&DB.get('meta',{}).dismissed!==j.version)showUpdateBanner(j);
@@ -1014,13 +1022,13 @@ function showUpdateBanner(j){
     h('button',{class:'icon-btn','aria-label':'بعداً',onclick:()=>{setMeta({dismissed:j.version});b.remove();}},'✕'));
   document.body.append(b);
 }
-function notesSince(j){return (j.changelog||[]).filter(e=>cmpVer(e.version,APP_VERSION)>0);}
+function notesSince(){return (UPD.changelog||[]).filter(e=>cmpVer(e.version,APP_VERSION)>0);}
 function changelogNode(entries){
   return h('div',{},entries.map(e=>h('div',{class:'cl'},h('b',{},'نسخهٔ '+fa(e.version)),' ',h('span',{class:'muted sm'},fa(e.date||'')),
     h('ul',{class:'steps'},(e.notes||[]).map(n=>h('li',{},n))))));
 }
 function openUpdateDialog(j){
-  const entries=notesSince(j);
+  const entries=notesSince();
   openDialog(h('div',{},
     h('p',{},`نسخهٔ فعلی ${fa(APP_VERSION)} ← نسخهٔ جدید ${fa(j.version)}`),
     entries.length?changelogNode(entries):null,
@@ -1078,7 +1086,7 @@ function viewUpdate(){
     if(UPD.info){
       status.textContent=UPD.available?`نسخهٔ جدید ${fa(UPD.info.version)} در دسترس است.`:'شما از آخرین نسخه استفاده می‌کنید ✓';
       apply.hidden=!UPD.available;
-      log.innerHTML='';log.append(changelogNode((UPD.info.changelog||[]).slice(0,10)));
+      log.innerHTML='';log.append(changelogNode((UPD.changelog||[]).slice(0,10)));
     }else status.textContent='برای بررسی نسخهٔ جدید، دکمهٔ زیر را بزنید.';
   }
   const check=async()=>{
@@ -1290,7 +1298,7 @@ loadLucide();buildDrawer();applySettings();route();scheduleUpdateChecks();setTim
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
   const had=!!navigator.serviceWorker.controller;let reloading=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!reloading){reloading=true;location.reload();}});
-  navigator.serviceWorker.register('sw.js').then(r=>{
+  navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>{
     swReg=r;
     r.addEventListener('updatefound',()=>{checkForUpdate({silent:true});});
   }).catch(()=>{});

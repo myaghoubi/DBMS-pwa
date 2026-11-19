@@ -1,6 +1,6 @@
-const VERSION = '0.4.0';
-const CACHE = 'formbuilder-v' + VERSION;
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+importScripts('version.js'); // APP_VERSION
+const CACHE = 'formbuilder-v' + self.APP_VERSION;
+const ASSETS = ['./', './index.html', './version.js', './changelog.json', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com']; // فونت و کتابخانهٔ آیکون
 
 self.addEventListener('install', e => {
@@ -24,7 +24,7 @@ self.addEventListener('message', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
-  if (url.pathname.endsWith('/version.json')) return; // همیشه از شبکه
+  if (url.searchParams.has('t')) return; // درخواست‌های بررسی نسخه (?t=…) همیشه از شبکه
   const sameOrigin = url.origin === location.origin;
   const isFont = FONT_HOSTS.includes(url.hostname);
   if (!sameOrigin && !isFont) return; // درخواست‌های API پیام‌رسان‌ها دست‌نخورده می‌مانند
