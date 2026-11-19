@@ -1,7 +1,7 @@
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 const CACHE = 'formbuilder-v' + VERSION;
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
-const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
+const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com']; // فونت و کتابخانهٔ آیکون
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
@@ -38,7 +38,7 @@ self.addEventListener('fetch', e => {
           }
           return res;
         })
-        .catch(() => cached || (sameOrigin ? caches.match('./index.html') : Response.error()));
+        .catch(() => cached || (sameOrigin && e.request.mode === 'navigate' ? caches.match('./index.html') : Response.error()));
       return cached || net;
     })
   );

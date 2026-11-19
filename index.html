@@ -63,7 +63,6 @@ p{margin:2px 0}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:18px}
 .tile{display:flex;flex-direction:column;gap:2px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
 .tile:hover{border-color:var(--pri)}
-.tile-ic{font-size:26px}
 .steps{margin:8px 0 0;padding-inline-start:22px}
 .about{text-align:center}
 .bars{display:flex;flex-direction:column;gap:8px;margin-top:8px}
@@ -83,6 +82,15 @@ p{margin:2px 0}
 .menu-btn.has-update{position:relative}
 .menu-btn.has-update::after{content:"";position:absolute;top:6px;left:6px;width:9px;height:9px;border-radius:50%;background:#f59e0b}
 .cl{margin-bottom:10px}
+
+.ic{display:inline-flex;align-items:center;justify-content:center;flex:none;font-style:normal}
+svg.lucide{width:1.15em;height:1.15em;stroke-width:2;flex:none}
+.btn,.fab{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.icon-btn svg.lucide{width:20px;height:20px}
+.dr-ic{width:22px;display:inline-flex;justify-content:center}.dr-ic svg.lucide{width:19px;height:19px}
+.tile-t{display:flex;align-items:center;gap:8px;font-size:15px}.tile-t svg.lucide{width:18px;height:18px;color:var(--pri)}
+.star svg.lucide{width:28px;height:28px}.star.on svg.lucide{fill:currentColor}
+.tile{gap:4px;padding:12px 14px}
 /* fields */
 .field{margin-bottom:14px}
 .lbl{font-weight:600;margin-bottom:4px}
@@ -534,30 +542,68 @@ function buildSubform(f,value,depth){
 }
 
 /* ---------- pages / shell ---------- */
-const APP_VERSION='0.3.0';
+const APP_VERSION='0.4.0';
 const DB={get:(k,d)=>load('fb.'+k,d),set:(k,v)=>save('fb.'+k,v)};
 const F=(id,label,type,extra)=>({id,label,type,...extra});
+/* ---------- icons (Lucide) ---------- */
+const FB={plus:'+',x:'✕',pencil:'✎','arrow-up':'↑','arrow-down':'↓','arrow-right':'→',menu:'☰',check:'✓','chevron-right':'›','chevron-left':'‹',star:'★'};
+const ic=name=>h('i',{'data-lucide':name,class:'ic','aria-hidden':'true'},FB[name]||'');
+const ICON_ONLY=new Set(['✕','✎','↑','↓','→','☰','✓','›','‹']);
+const ICON_OF={'✕':'x','✎':'pencil','↑':'arrow-up','↓':'arrow-down','→':'arrow-right','☰':'menu','✓':'check','›':'chevron-right','‹':'chevron-left'};
+const LABEL_ICONS={
+  'ذخیره':'save','ذخیره فرم':'save','ذخیرهٔ تغییرات':'save','ذخیره و ثبت جدید':'save','تأیید':'check','انصراف':'x','بعداً':'clock',
+  'حذف':'trash-2','حذف ردیف':'trash-2','ویرایش':'pencil','ویرایش فرم':'pencil','ثبت رکورد':'file-plus','رکوردها':'list',
+  'امروز':'calendar','پاک کردن':'eraser','خروجی CSV':'file-spreadsheet','خروجی JSON':'file-json',
+  'مشاهده':'eye','مشاهده و بروزرسانی':'eye','بروزرسانی اکنون':'refresh-cw','بررسی بروزرسانی':'refresh-cw',
+  'نصب برنامه':'download','نصب برنامه روی دستگاه':'download','پاک کردن کش و بارگذاری مجدد':'rotate-ccw',
+  'دریافت فایل پشتیبان':'download','انتخاب فایل پشتیبان':'upload','پاک کردن همهٔ داده‌ها':'trash-2',
+  'بررسی اتصال':'plug','ارسال پیام آزمایشی':'send','ارسال پیام آزمایشی به همه':'send',
+  'تنظیمات بله':'settings','تنظیمات تلگرام':'settings','کاربران':'users','نقش‌ها':'shield'
+};
+// آیکون دکمه‌ها به‌صورت خودکار از روی برچسب افزوده می‌شود تا جدول آیکون‌ها در یک جا باشد
+function decorate(){
+  document.querySelectorAll('.btn:not([data-ic]),.fab:not([data-ic]),.icon-btn:not([data-ic]),.star:not([data-ic])').forEach(el=>{
+    el.dataset.ic='1';
+    let t=el.textContent.trim(),name=null;
+    if(el.classList.contains('star')){el.textContent='';el.append(ic('star'));return;}
+    if(ICON_ONLY.has(t)){el.textContent='';el.append(ic(ICON_OF[t]));return;}
+    if(/^＋/.test(t))name='plus';else name=LABEL_ICONS[t];
+    if(!name)return;
+    const tn=[...el.childNodes].find(n=>n.nodeType===3&&n.nodeValue.trim());
+    if(tn)tn.nodeValue=tn.nodeValue.replace(/^\s*＋\s*/,'');
+    el.prepend(ic(name));
+  });
+}
+function renderIcons(){if(window.lucide&&lucide.createIcons)lucide.createIcons();}
+function loadScript(src){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=()=>window.lucide?ok():no();s.onerror=no;document.head.append(s);});}
+function loadLucide(){
+  // اول نسخهٔ محلی (برای آفلاین کامل)، در غیر این‌صورت CDN با نسخهٔ ثابت
+  loadScript('vendor/lucide.min.js').catch(()=>loadScript('https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js')).then(renderIcons).catch(()=>{});
+}
+let icRaf=0;
+new MutationObserver(()=>{if(icRaf)return;icRaf=requestAnimationFrame(()=>{icRaf=0;decorate();renderIcons();});}).observe(document.documentElement,{childList:true,subtree:true});
+
 const appName=()=>DB.get('settings',{}).appName||'فرم‌ساز';
 const MENU=[
-  ['home','خانه','🏠','#/'],
-  ['forms','مدیریت فرم‌ها','📝','#/forms'],
-  ['reports','مدیریت گزارش‌ها و نمودارها','📊','#/reports'],
-  ['users','کاربران و نقش‌ها','👥','#/users'],
-  ['process','تعریف فرآیند','🔀','#/process'],
-  ['messenger','اتصال به پیام‌رسان','💬','#/messenger'],
-  ['bale','تنظیمات بله','🟢','#/bale'],
-  ['telegram','تنظیمات تلگرام','✈️','#/telegram'],
-  ['backup','پشتیبان‌گیری و بازیابی','💾','#/backup'],
-  ['update','بروزرسانی','🔄','#/update'],
-  ['settings','تنظیمات برنامه','⚙️','#/settings'],
-  ['about','درباره ما','ℹ️','#/about']
+  ['home','خانه','layout-dashboard','#/'],
+  ['forms','مدیریت فرم‌ها','file-text','#/forms'],
+  ['reports','مدیریت گزارش‌ها و نمودارها','trending-up','#/reports'],
+  ['users','کاربران و نقش‌ها','users','#/users'],
+  ['process','تعریف فرآیند','workflow','#/process'],
+  ['messenger','اتصال به پیام‌رسان','messages-square','#/messenger'],
+  ['bale','تنظیمات بله','message-square','#/bale'],
+  ['telegram','تنظیمات تلگرام','send','#/telegram'],
+  ['backup','پشتیبان‌گیری و بازیابی','database-backup','#/backup'],
+  ['update','بروزرسانی','refresh-cw','#/update'],
+  ['settings','تنظیمات برنامه','settings','#/settings'],
+  ['about','درباره ما','info','#/about']
 ];
 let drawerEl,backdropEl;
 function buildDrawer(){
   backdropEl=h('div',{id:'backdrop',onclick:closeDrawer});
   drawerEl=h('nav',{id:'drawer','aria-label':'منوی اصلی'},
     h('div',{class:'dr-head'},h('b',{id:'dr-name'},appName()),h('span',{class:'muted sm'},'نسخه '+fa(APP_VERSION))),
-    h('div',{class:'dr-list'},MENU.map(m=>h('a',{href:m[3],'data-id':m[0],class:'dr-item',onclick:closeDrawer},h('span',{class:'dr-ic'},m[2]),m[1]))));
+    h('div',{class:'dr-list'},MENU.map(m=>h('a',{href:m[3],'data-id':m[0],class:'dr-item',onclick:closeDrawer},h('span',{class:'dr-ic'},ic(m[2])),m[1]))));
   document.body.append(backdropEl,drawerEl);
 }
 const openDrawer=()=>{drawerEl.classList.add('open');backdropEl.classList.add('show');};
@@ -631,7 +677,7 @@ function viewHome(){
   };
   const latest=forms.flatMap(f=>(recs[f.id]||[]).map(r=>({f,r}))).sort((a,b)=>b.r.createdAt-a.r.createdAt).slice(0,5);
   page({title:appName()},
-    h('div',{class:'tiles'},MENU.slice(1).map(m=>h('a',{class:'tile',href:m[3]},h('span',{class:'tile-ic'},m[2]),h('b',{},m[1]),h('span',{class:'muted sm'},info[m[0]]||'')))),
+    h('div',{class:'tiles'},MENU.slice(1).map(m=>h('a',{class:'tile',href:m[3]},h('b',{class:'tile-t'},ic(m[2]),m[1]),h('span',{class:'muted sm'},info[m[0]]||'')))),
     h('h3',{},'آخرین رکوردها'),
     latest.length?latest.map(x=>h('a',{class:'card',style:'display:block',href:`#/records/${x.f.id}`},h('b',{},x.f.title),' ',h('span',{class:'muted sm'},fmtDT(x.r.createdAt)),h('p',{class:'sm muted'},summarize(x.f,x.r.data)||'—'))):h('div',{class:'empty sm'},'هنوز رکوردی ثبت نشده است.'));
 }
@@ -1067,7 +1113,7 @@ function viewSettings(){
 }
 function viewAbout(){
   page({title:'درباره ما'},
-    h('div',{class:'card about'},h('img',{src:'icon-192.png',width:72,height:72,alt:'',style:'border-radius:16px'}),h('h2',{},appName()),h('p',{class:'muted'},'نسخهٔ '+fa(APP_VERSION)),
+    h('div',{class:'card about'},h('h2',{},appName()),h('p',{class:'muted'},'نسخهٔ '+fa(APP_VERSION)),
       h('p',{},'سامانهٔ فرم‌ساز، گزارش‌گیری و فرآیندها؛ اجرا روی مرورگر و قابل نصب به‌صورت PWA.')),
     h('div',{class:'card'},h('h2',{},'امکانات'),h('ul',{class:'steps'},
       ['فرم‌ساز با فیلدهای متنوع و تقویم شمسی','زیرفرم‌های دیالوگی و درون‌خط (تک‌رکوردی و چندرکوردی)','گزارش و نمودار','کاربران، نقش‌ها و تعریف فرآیند','اتصال به بله و تلگرام','پشتیبان‌گیری، بازیابی و بروزرسانی'].map(x=>h('li',{},x)))),
@@ -1240,7 +1286,7 @@ function route(){
   }catch(e){console.error(e);page({title:'خطا',back:'#/'},h('div',{class:'empty'},'خطایی رخ داد: '+e.message));}
 }
 window.addEventListener('hashchange',route);
-buildDrawer();applySettings();route();scheduleUpdateChecks();setTimeout(checkIfDue,3000);
+loadLucide();buildDrawer();applySettings();route();scheduleUpdateChecks();setTimeout(checkIfDue,3000);
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
   const had=!!navigator.serviceWorker.controller;let reloading=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!reloading){reloading=true;location.reload();}});
