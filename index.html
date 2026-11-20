@@ -558,7 +558,7 @@ const LABEL_ICONS={
   'نصب برنامه':'download','نصب برنامه روی دستگاه':'download','پاک کردن کش و بارگذاری مجدد':'rotate-ccw',
   'دریافت فایل پشتیبان':'download','انتخاب فایل پشتیبان':'upload','پاک کردن همهٔ داده‌ها':'trash-2',
   'بررسی اتصال':'plug','ارسال پیام آزمایشی':'send','ارسال پیام آزمایشی به همه':'send',
-  'ارسال به تلگرام':'send','ارسال':'send','کپی لینک':'copy','شروع دریافت':'play','توقف دریافت':'square','بستن':'x','شروع پر کردن':'play',
+  'ارسال به تلگرام':'send','عیب‌یابی':'info','ارسال':'send','کپی لینک':'copy','شروع دریافت':'play','توقف دریافت':'square','بستن':'x','شروع پر کردن':'play',
   'تنظیمات بله':'settings','تنظیمات تلگرام':'settings','کاربران':'users','نقش‌ها':'shield'
 };
 // آیکون دکمه‌ها به‌صورت خودکار از روی برچسب افزوده می‌شود تا جدول آیکون‌ها در یک جا باشد
@@ -1283,7 +1283,7 @@ const tsend=(chat,text,kb)=>tg('sendMessage',{chat_id:chat,text,...(kb&&kb.lengt
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const Sess={get:id=>DB.get('tgsessions',{})[id],set(id,s){const a=DB.get('tgsessions',{});if(s)a[id]=s;else delete a[id];DB.set('tgsessions',a);}};
 let paintCollector=()=>{};
-const Poll={running:false,ctrl:null,err:'',last:0,gen:0};
+const Poll={running:false,ctrl:null,err:'',last:0,gen:0,polls:0,received:0};
 const tgForms=()=>Store.forms.filter(f=>f.telegram);
 const fullName=u=>[u.first_name,u.last_name].filter(Boolean).join(' ')||u.username||String(u.id);
 
@@ -1515,7 +1515,7 @@ async function startPolling(){
         Poll.ctrl=new AbortController();
         const st=DB.get('tgstate',{offset:0});
         const ups=await tg('getUpdates',{offset:st.offset||0,timeout:25,allowed_updates:['message','callback_query']},Poll.ctrl.signal);
-        Poll.err='';Poll.last=Date.now();
+        Poll.err='';Poll.last=Date.now();Poll.polls++;Poll.received+=ups.length;
         for(const u of ups){
           try{if(u.message)await onMessage(u.message);else if(u.callback_query)await onCallback(u.callback_query);}
           catch(e){console.error('collector',e);}
@@ -1567,9 +1567,33 @@ function openSendDialog(form){
     h('button',{type:'button',class:'btn',onclick:()=>d.close()},'بستن')]});
 }
 
+/* ---- عیب‌یابی ---- */
+async function diagnose(){
+  const L=[];const c=DB.get('telegram',{});
+  L.push(`نسخهٔ برنامه: ${APP_VERSION}`);
+  L.push(`دریافت پیام‌ها در برنامه: ${Poll.running?'روشن':'خاموش'}`+(Poll.running?` (${Poll.polls} بار اتصال موفق، ${Poll.received} پیام دریافت‌شده${Poll.last?'، آخرین: '+new Date(Poll.last).toLocaleTimeString('fa-IR'):''})`:''));
+  if(!c.token){L.push('✗ توکن تلگرام ذخیره نشده است.');return L.join('\n');}
+  try{const me=await tg('getMe');L.push(`✓ اتصال به تلگرام برقرار است — ربات: @${me.username}`);}
+  catch(e){L.push('✗ اتصال به تلگرام ناموفق: '+e.message);return L.join('\n');}
+  try{
+    const w=await tg('getWebhookInfo');
+    L.push(`وب‌هوک: ${w.url?w.url:'(ندارد — درست است)'}`);
+    L.push(`پیام‌های در انتظار دریافت در تلگرام: ${w.pending_update_count||0}`);
+    if(w.last_error_message)L.push('آخرین خطای وب‌هوک: '+w.last_error_message);
+    if(w.url)L.push('⚠ وب‌هوک فعال است و جلوی دریافت پیام در برنامه را می‌گیرد؛ «شروع دریافت» آن را حذف می‌کند.');
+    if((w.pending_update_count||0)>0&&!Poll.running)L.push('⚠ پیام منتظر است ولی «دریافت پیام‌ها» روشن نیست؛ «شروع دریافت» را بزنید.');
+    if((w.pending_update_count||0)>0&&Poll.running)L.push('⚠ پیام‌ها در تلگرام می‌مانند ولی برنامه آن‌ها را نمی‌گیرد؛ شاید برنامه در جای دیگری هم باز است.');
+  }catch(e){L.push('✗ خواندن وضعیت وب‌هوک ناموفق: '+e.message);}
+  const subs=DB.get('tgsubs',[]),fs=tgForms();
+  L.push(`مشترکین ثبت‌شده: ${subs.length}`);
+  L.push(`فرم‌های فعال برای ربات: ${fs.length}${fs.length?' ('+fs.map(f=>f.title).join('، ')+')':' — هیچ فرمی فعال نیست'}`);
+  return L.join('\n');
+}
+
 /* ---- UI card (in Telegram settings) ---- */
 function collectorCard(){
   const box=h('div',{class:'card'});
+  let diagText='';
   function paint(){
     if(!box.isConnected&&box.dataset.painted)return;
     box.dataset.painted='1';
@@ -1579,11 +1603,15 @@ function collectorCard(){
       h('h2',{},'جمع‌آوری اطلاعات با ربات'),
       h('p',{class:'muted sm'},'افراد با /start عضو ربات می‌شوند، فرم را از ربات دریافت و مرحله‌به‌مرحله پر می‌کنند و پاسخ‌ها در «رکوردها»ی همان فرم ثبت می‌شود.'),
       h('div',{class:'note',id:'col-status'},
-        Poll.running?('در حال دریافت پیام‌ها…'+(Poll.err?'\n⚠️ '+Poll.err:'')):('متوقف'+(Poll.err?'\n⚠️ '+Poll.err:''))),
+        (Poll.running?'در حال دریافت پیام‌ها…':'متوقف')
+        +(Poll.running?`\nاتصال موفق: ${fa(Poll.polls)} بار · پیام دریافت‌شده: ${fa(Poll.received)}`:'')
+        +(Poll.err?'\n⚠️ '+Poll.err:'')),
       h('div',{class:'btn-row'},
         Poll.running?h('button',{class:'btn',onclick:stopPolling},'توقف دریافت')
           :h('button',{class:'btn primary',onclick:async()=>{try{await startPolling();}catch(e){toast('خطا: '+e.message);}paint();}},'شروع دریافت'),
+        h('button',{class:'btn',onclick:async()=>{diagText='در حال بررسی…';paint();try{diagText=await diagnose();}catch(e){diagText='خطا: '+e.message;}paint();}},'عیب‌یابی'),
         link?h('button',{class:'btn',onclick:()=>{navigator.clipboard&&navigator.clipboard.writeText(link).then(()=>toast('لینک ربات کپی شد'),()=>toast('کپی نشد'));}},'کپی لینک'):null),
+      h('pre',{id:'col-diag',class:'note sm',hidden:!diagText,style:'white-space:pre-wrap;margin-top:8px'},diagText),
       link?h('p',{class:'sm',dir:'ltr',style:'text-align:right;margin-top:8px'},link):null,
       h('div',{class:'note sm',style:'margin-top:10px'},'دریافت پاسخ‌ها فقط تا وقتی برنامه باز است انجام می‌شود. پیام‌هایی که در زمان بسته‌بودن برنامه برسند تا حدود ۲۴ ساعت نزد تلگرام می‌مانند و با باز شدن برنامه پردازش می‌شوند. هر کس لینک ربات را داشته باشد می‌تواند فرم‌های فعال را پر کند.'),
       h('h3',{style:'margin:14px 0 6px'},`مشترکین (${fa(subs.length)})`),
