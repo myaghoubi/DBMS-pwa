@@ -5,6 +5,9 @@
   var NS = 'http://www.w3.org/2000/svg';
   var F = '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>';
   var P = {
+    'play': '<polygon points="6 3 20 12 6 21 6 3"/>',
+    'square': '<rect width="18" height="18" x="3" y="3" rx="2"/>',
+    'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
     'plus': '<path d="M5 12h14"/><path d="M12 5v14"/>',
     'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     'menu': '<path d="M4 12h16"/><path d="M4 6h16"/><path d="M4 18h16"/>',
