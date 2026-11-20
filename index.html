@@ -947,6 +947,7 @@ function viewPlatform(p){
     F('token','توکن ربات','text',{placeholder:'123456:ABC-DEF…'}),
     F('chatId','شناسهٔ چت پیش‌فرض (کاربر / گروه / کانال)','text'),
     ...(p==='telegram'?[F('appUrl','آدرس عمومی برنامه (برای حالت فرم کامل / Mini App)','url',{placeholder:'https://username.github.io/DBMS-pwa/',help:'باید https و از اینترنت قابل دسترس باشد (مثلاً GitHub Pages). آدرس لوکال یا شبکهٔ داخلی کار نمی‌کند.'})]:[]),
+    ...(p==='telegram'?[F('relayUrl','آدرس واسط Cloudflare Worker (اختیاری)','url',{placeholder:'https://tg-relay.your-name.workers.dev',help:'با واسط، پیام‌ها وقتی برنامه بسته است هم تا ۷ روز جمع می‌شوند. راهنما: پوشهٔ worker در مخزن.'}),F('relayKey','کلید واسط (SECRET)','text',{placeholder:'فقط حروف انگلیسی، عدد، - و _',help:'همان مقداری که با wrangler secret put SECRET گذاشتید.'})]:[]),
     F('baseUrl','آدرس API (اختیاری)','url',{placeholder:P.base,help:'برای استفاده از واسط یا پروکسی، آدرس پایه را جایگزین کنید.'})]};
   VIRTUAL[schema.id]=schema;
   const ui=buildFormUI(schema,DB.get(p,{enabled:false}),0);
@@ -1783,6 +1784,16 @@ async function onCallback(cb){
   if(data.startsWith('r:')&&f.type==='rating'){const n=+data.slice(2);return n>=1&&n<=(f.max||5)?setAnswer(chat,s,n):undefined;}
 }
 
+/* ---- واسط Cloudflare Worker ---- */
+const relayCfg=()=>{const c=DB.get('telegram',{});return c.relayUrl&&c.relayKey?{url:c.relayUrl.trim().replace(/\/+$/,''),key:c.relayKey.trim()}:null;};
+async function relayCall(rl,path,opt={}){
+  const res=await fetch(rl.url+path,{...opt,headers:{authorization:'Bearer '+rl.key}});
+  const j=await res.json().catch(()=>({}));
+  if(!res.ok||j.ok===false)throw new Error('واسط: '+(j.error||('خطای HTTP '+res.status)));
+  return j;
+}
+const relayGet=async(rl,offset,signal)=>(await relayCall(rl,'/updates?offset='+offset,{signal})).result||[];
+const relayAck=(rl,upto)=>relayCall(rl,'/ack?upto='+upto,{method:'POST'});
 /* ---- polling ---- */
 async function startPolling(){
   if(Poll.running)return;
@@ -1790,8 +1801,12 @@ async function startPolling(){
   if(!c.token)throw new Error('توکن تلگرام وارد نشده است');
   Poll.running=true;Poll.err='';const gen=++Poll.gen;
   DB.set('collector',{on:true});
+  const rl=relayCfg();
   try{
-    await tg('deleteWebhook',{});
+    if(rl){
+      if(!/^[A-Za-z0-9_-]{8,256}$/.test(rl.key))throw new Error('کلید واسط باید ۸ تا ۲۵۶ نویسه از حروف انگلیسی، عدد، - و _ باشد');
+      await tg('setWebhook',{url:rl.url+'/hook',secret_token:rl.key,allowed_updates:['message','callback_query']});
+    }else await tg('deleteWebhook',{});
     const me=await tg('getMe');
     DB.set('telegram',{...DB.get('telegram',{}),botUsername:me.username||''});
   }catch(e){Poll.running=false;Poll.err=e.message;DB.set('collector',{on:false});paintCollector();throw e;}
@@ -1801,13 +1816,19 @@ async function startPolling(){
       try{
         Poll.ctrl=new AbortController();
         const st=DB.get('tgstate',{offset:0});
-        const ups=await tg('getUpdates',{offset:st.offset||0,timeout:25,allowed_updates:['message','callback_query']},Poll.ctrl.signal);
+        const rl2=relayCfg();
+        let ups;
+        if(rl2){
+          ups=await relayGet(rl2,st.offset||0,Poll.ctrl.signal);
+          if(!ups.length)await sleep(4000);
+        }else ups=await tg('getUpdates',{offset:st.offset||0,timeout:25,allowed_updates:['message','callback_query']},Poll.ctrl.signal);
         Poll.err='';Poll.last=Date.now();Poll.polls++;Poll.received+=ups.length;
         for(const u of ups){
           try{if(u.message)await onMessage(u.message);else if(u.callback_query)await onCallback(u.callback_query);}
           catch(e){console.error('collector',e);}
           DB.set('tgstate',{offset:u.update_id+1});
         }
+        if(rl2&&ups.length)relayAck(rl2,ups[ups.length-1].update_id).catch(()=>{});
       }catch(e){
         if(!Poll.running||gen!==Poll.gen)break;
         Poll.err=/409|Conflict/i.test(e.message)?'ربات در جای دیگری هم در حال دریافت پیام است (برنامه در تب یا دستگاه دیگر باز است؟)':e.message;
@@ -1867,10 +1888,15 @@ async function diagnose(){
     L.push(`وب‌هوک: ${w.url?w.url:'(ندارد — درست است)'}`);
     L.push(`پیام‌های در انتظار دریافت در تلگرام: ${w.pending_update_count||0}`);
     if(w.last_error_message)L.push('آخرین خطای وب‌هوک: '+w.last_error_message);
-    if(w.url)L.push('⚠ وب‌هوک فعال است و جلوی دریافت پیام در برنامه را می‌گیرد؛ «شروع دریافت» آن را حذف می‌کند.');
+    if(w.url&&!relayCfg())L.push('⚠ وب‌هوک فعال است و جلوی دریافت پیام در برنامه را می‌گیرد؛ «شروع دریافت» آن را حذف می‌کند.');
     if((w.pending_update_count||0)>0&&!Poll.running)L.push('⚠ پیام منتظر است ولی «دریافت پیام‌ها» روشن نیست؛ «شروع دریافت» را بزنید.');
     if((w.pending_update_count||0)>0&&Poll.running)L.push('⚠ پیام‌ها در تلگرام می‌مانند ولی برنامه آن‌ها را نمی‌گیرد؛ شاید برنامه در جای دیگری هم باز است.');
   }catch(e){L.push('✗ خواندن وضعیت وب‌هوک ناموفق: '+e.message);}
+  const rl=relayCfg();
+  if(rl){
+    try{const w=await tg('getWebhookInfo');L.push(w.url===rl.url+'/hook'?'✓ وب‌هوک روی واسط تنظیم است':`✗ وب‌هوک روی واسط نیست (${w.url||'خالی'}) — «شروع دریافت» را بزنید`);}catch{}
+    try{await relayGet(rl,Number.MAX_SAFE_INTEGER);L.push('✓ واسط در دسترس است و کلید درست است');}catch(e){L.push('✗ '+e.message);}
+  }else L.push('واسط Cloudflare: استفاده نمی‌شود');
   const mf=tgForms().filter(f=>f.tgMode==='mini');
   if(mf.length){
     L.push(`فرم‌های حالت Mini App: ${mf.map(f=>f.title).join('، ')}`);
