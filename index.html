@@ -133,7 +133,7 @@ input[type=range]{width:100%;accent-color:var(--pri)}
 .switch input:checked+.slider::after{right:21px}
 .rangebox{display:flex;align-items:center;gap:10px}
 .rangebox output{min-width:44px;text-align:center;font-weight:700;color:var(--pri)}
-.jd-wrap,.pw-wrap{display:flex;gap:6px}.pw-wrap input{flex:1;min-width:0}.pw-wrap .btn{white-space:nowrap}
+.jd-wrap{display:flex;gap:6px}.pw-wrap{position:relative}.pw-wrap input{padding-left:42px}.pw-eye{position:absolute;left:4px;top:50%;transform:translateY(-50%);width:34px;height:34px;display:grid;place-items:center;border:0;background:none;color:var(--muted,#666);border-radius:8px;cursor:pointer;padding:0}.pw-eye:hover{color:var(--fg)}.pw-eye svg,.pw-eye .ic{width:18px;height:18px}
 input[type=password]{text-align:right}
 .jd-wrap input{cursor:pointer}
 .field.sub{border:1px dashed var(--line);border-radius:12px;padding:10px;background:rgba(127,127,127,.04)}
@@ -648,8 +648,9 @@ const appName=()=>{const n=DB.get('settings',{}).appName;return !n||n==='فرم�
 
 /* ---------- ورود به سیستم و دسترسی‌ها (سمت مرورگر؛ نه جایگزین امنیت سرور) ---------- */
 function pwBox(inp){
-  const b=h('button',{type:'button',class:'btn','aria-label':'نمایش گذرواژه','aria-pressed':'false',onclick:()=>{
-    const show=inp.type==='password';inp.type=show?'text':'password';b.textContent=show?'پنهان':'نمایش';b.setAttribute('aria-pressed',String(show));inp.focus();}},'نمایش');
+  const b=h('button',{type:'button',class:'pw-eye','aria-label':'نمایش گذرواژه','aria-pressed':'false',onclick:()=>{
+    const show=inp.type==='password';inp.type=show?'text':'password';
+    b.replaceChildren(ic(show?'eye-off':'eye'));b.setAttribute('aria-pressed',String(show));b.setAttribute('aria-label',show?'پنهان کردن گذرواژه':'نمایش گذرواژه');inp.focus();}},ic('eye'));
   return h('div',{class:'pw-wrap'},inp,b);
 }
 const enc8=s=>new TextEncoder().encode(s);
@@ -988,10 +989,9 @@ function enableAuth(){
   const roles=DB.get('roles',[]);
   const schema={id:'__adm',title:'مدیر',fields:[
     F('name','نام مدیر','text',{required:true}),F('username','نام کاربری','text',{required:true}),
-    F('password','گذرواژه (حداقل ۶ نویسه)','password',{required:true}),F('password2','تکرار گذرواژه','password',{required:true})]};
+    F('password','گذرواژه (حداقل ۶ نویسه)','password',{required:true})]};
   editEntity(schema,{},'ساخت مدیر و فعال‌سازی ورود',d=>{
     if(d.password.length<6){toast('گذرواژه حداقل ۶ نویسه باشد');return false;}
-    if(d.password!==d.password2){toast('تکرار گذرواژه مطابقت ندارد');return false;}
     (async()=>{
       let rs=DB.get('roles',[]);
       let role=rs.find(r=>(r.perms||[]).includes('users'));
