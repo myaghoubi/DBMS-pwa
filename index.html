@@ -57,7 +57,7 @@ p{margin:2px 0}
 .dr-ic{width:26px;text-align:center;font-size:18px}
 @media (min-width:900px){
   #drawer{transform:none}#backdrop{display:none}
-  #app{margin-right:290px}.menu-btn{display:none}
+  html:not(.mini) #app{margin-right:290px}.menu-btn{display:none}
   .main{max-width:980px}
 }
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:18px}
@@ -92,6 +92,7 @@ svg.lucide{width:1.15em;height:1.15em;stroke-width:2;flex:none}
 .star svg.lucide{width:28px;height:28px}.star.on svg.lucide{fill:currentColor}
 .tile{gap:4px;padding:12px 14px}
 /* image radio */
+.mini-wrap{max-width:640px;margin:0 auto;padding:14px}.mini-wrap h1{font-size:20px;margin:0 0 4px}.mini-wrap .desc{color:var(--muted,#666);margin:0 0 12px}.numopt{display:flex;gap:8px;align-items:center}.numopt b{min-width:22px}
 .imgopts{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
 .imgopt{position:relative;display:flex;flex-direction:column;gap:6px;align-items:center;border:2px solid var(--line);border-radius:12px;padding:8px;cursor:pointer;background:var(--card);text-align:center}
 .imgopt input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
@@ -478,6 +479,11 @@ function buildControl(f,value,depth){
       return {el:s,get:()=>s.value};
     }
     case 'imageradio':{
+      if(f.numbered){
+        const name=uid();let cur=value??'';
+        const box=h('div',{},(f.choices||[]).map((ch,i)=>h('label',{class:'opt numopt'},h('input',{type:'radio',name,checked:ch.label===value,onchange:()=>{cur=ch.label;}}),h('b',{},fa(i+1)+'.'),ch.label)));
+        return {el:box,get:()=>cur};
+      }
       const name=uid();let cur=value??'';
       const labels=[];
       const mark=()=>labels.forEach(([l,v])=>l.classList.toggle('sel',v===cur));
@@ -940,6 +946,7 @@ function viewPlatform(p){
     F('enabled','فعال باشد','boolean'),
     F('token','توکن ربات','text',{placeholder:'123456:ABC-DEF…'}),
     F('chatId','شناسهٔ چت پیش‌فرض (کاربر / گروه / کانال)','text'),
+    ...(p==='telegram'?[F('appUrl','آدرس عمومی برنامه (برای حالت فرم کامل / Mini App)','url',{placeholder:'https://username.github.io/DBMS-pwa/',help:'باید https و از اینترنت قابل دسترس باشد (مثلاً GitHub Pages). آدرس لوکال یا شبکهٔ داخلی کار نمی‌کند.'})]:[]),
     F('baseUrl','آدرس API (اختیاری)','url',{placeholder:P.base,help:'برای استفاده از واسط یا پروکسی، آدرس پایه را جایگزین کنید.'})]};
   VIRTUAL[schema.id]=schema;
   const ui=buildFormUI(schema,DB.get(p,{enabled:false}),0);
@@ -1120,7 +1127,7 @@ function checkIfDue(){
   const min=intervalMin();if(!min||!navigator.onLine)return;
   if(Date.now()-(DB.get('meta',{}).lastCheck||0)>=min*60000)checkForUpdate({silent:true});
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkIfDue();});
+document.addEventListener('visibilitychange',()=>{if(!IS_MINI&&document.visibilityState==='visible')checkIfDue();});
 
 function viewUpdate(){
   const status=h('div',{class:'note'},'');
@@ -1218,7 +1225,10 @@ function viewBuilder(id){
     h('div',{class:'card'},
       h('label',{class:'row'},h('span',{},'عنوان فرم'),h('input',{type:'text',value:draft.title,placeholder:'مثلاً: ثبت مشتری',oninput:e=>{draft.title=e.target.value;}})),
       h('label',{class:'row'},h('span',{},'توضیحات (اختیاری)'),h('input',{type:'text',value:draft.description||'',oninput:e=>{draft.description=e.target.value;}})),
-      h('label',{class:'chk'},h('input',{type:'checkbox',checked:!!draft.telegram,onchange:e=>{draft.telegram=e.target.checked;}}),'در ربات تلگرام قابل پر کردن باشد')),
+      h('label',{class:'chk'},h('input',{type:'checkbox',checked:!!draft.telegram,onchange:e=>{draft.telegram=e.target.checked;}}),'در ربات تلگرام قابل پر کردن باشد'),
+      h('label',{class:'row'},h('span',{},'روش پر کردن در تلگرام'),h('select',{onchange:e=>{draft.tgMode=e.target.value;}},
+        h('option',{value:'steps',selected:draft.tgMode!=='mini'},'مرحله‌به‌مرحله (سؤال و جواب)'),
+        h('option',{value:'mini',selected:draft.tgMode==='mini'},'کل فرم یکجا (Mini App)')))),
     h('h3',{},'فیلدها'),listEl,
     h('div',{class:'btn-row'},
       h('button',{class:'btn',onclick:()=>openFieldEditor(draft,null,nf=>{draft.fields.push(nf);drawList();})},'＋ افزودن فیلد'),
@@ -1392,10 +1402,160 @@ async function showForms(chat){
 async function startForm(chat,from,formId){
   const form=getForm(formId);
   if(!form||!form.telegram)return tsend(chat,'این فرم در دسترس نیست. /forms');
+  if(form.tgMode==='mini'){
+    const r=await sendMiniForm(chat,from,form);
+    if(r)return r;
+  }
   const s={formId,stack:[{formId,i:0,data:{}}],q:null,from:{id:from.id,name:fullName(from),username:from.username||''}};
   Sess.set(chat,s);
   await tsend(chat,`📝 «${form.title}»${form.description?'\n'+form.description:''}\n\nبرای لغو: /cancel`);
   return ask(chat,s);
+}
+
+/* ---- Mini App: نمایش کل فرم یکجا داخل تلگرام ---- */
+const IS_MINI=new URLSearchParams(location.search).has('m');
+if(IS_MINI)document.documentElement.classList.add('mini');
+const b64uEnc=u8=>{let b='';for(let i=0;i<u8.length;i+=0x8000)b+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
+const b64uDec=t=>{const b=atob(t.replace(/-/g,'+').replace(/_/g,'/'));const u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u;};
+async function streamBytes(stream,u8){return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(stream)).arrayBuffer());}
+async function pack(obj){
+  const raw=new TextEncoder().encode(JSON.stringify(obj));
+  if(typeof CompressionStream==='function'){try{return 'z.'+b64uEnc(await streamBytes(new CompressionStream('deflate-raw'),raw));}catch{}}
+  return 'j.'+b64uEnc(raw);
+}
+async function unpack(t){
+  const k=t.slice(0,2),u=b64uDec(t.slice(2));
+  if(k==='z.'){if(typeof DecompressionStream!=='function')throw new Error('مرورگر از فشرده‌سازی پشتیبانی نمی‌کند');return JSON.parse(new TextDecoder().decode(await streamBytes(new DecompressionStream('deflate-raw'),u)));}
+  if(k==='j.')return JSON.parse(new TextDecoder().decode(u));
+  throw new Error('قالب لینک نامعتبر است');
+}
+function collectForms(root){
+  const out=[],seen=new Set();
+  (function walk(id){
+    if(seen.has(id))return;seen.add(id);
+    const f=getForm(id);if(!f)return;out.push(f);
+    f.fields.forEach(x=>{if(x.type==='subform'&&x.subformId)walk(x.subformId);});
+  })(root);
+  return out;
+}
+const miniDef=form=>{
+  const forms=collectForms(form.id).map(f=>({id:f.id,title:f.title,...(f.description?{description:f.description}:{}),
+    fields:f.fields.map(x=>x.type==='imageradio'?{...x,choices:(x.choices||[]).map(c=>({label:c.label})),numbered:true}:x)}));
+  return {v:1,id:form.id,forms};
+};
+const miniBase=()=>{
+  const c=DB.get('telegram',{});let u=(c.appUrl||'').trim();
+  if(!u&&/^https:/.test(location.href)&&!/^(localhost|127\.|192\.168\.|10\.)/.test(location.hostname))u=location.origin+location.pathname;
+  if(!/^https:\/\//i.test(u))return '';
+  return u.replace(/[?#].*$/,'').replace(/index\.html$/,'');
+};
+const MINI_URL_MAX=2000;
+async function miniUrl(form){
+  const base=miniBase();if(!base)return {error:'آدرس عمومی https برنامه در «تنظیمات تلگرام» وارد نشده است.'};
+  const url=base+'?m='+await pack(miniDef(form));
+  if(url.length>MINI_URL_MAX)return {error:`فرم برای حالت Mini App بزرگ است (${url.length} نویسه؛ حداکثر ${MINI_URL_MAX}).`};
+  return {url};
+}
+async function sendChoicePhotos(chat,form){
+  for(const f of collectForms(form.id)){
+    for(const x of f.fields){
+      if(x.type!=='imageradio')continue;
+      for(let i=0;i<(x.choices||[]).length;i++){
+        const ch=x.choices[i];if(!ch.img)continue;
+        try{const blob=await (await fetch(ch.img)).blob();
+          await tgUpload('sendPhoto',{chat_id:chat,caption:`«${x.label}» — گزینهٔ ${fa(i+1)}: ${ch.label}`},{photo:blob});await sleep(50);}
+        catch(e){console.warn('mini photo',e);}
+      }
+    }
+  }
+}
+// true/نتیجه: ارسال شد؛ null: برگشت به حالت مرحله‌به‌مرحله
+async function sendMiniForm(chat,from,form){
+  const r=await miniUrl(form);
+  if(r.error){await tsend(chat,'ℹ️ '+r.error+'\nفرم به‌صورت مرحله‌به‌مرحله پر می‌شود.');return null;}
+  Sess.set(chat,{formId:form.id,mini:true,stack:[{formId:form.id,i:0,data:{}}],q:null,from:{id:from.id,name:fullName(from),username:from.username||''}});
+  await sendChoicePhotos(chat,form);
+  return tg('sendMessage',{chat_id:chat,
+    text:`📝 «${form.title}»${form.description?'\n'+form.description:''}\n\nبرای دیدن و پر کردن کل فرم، دکمهٔ پایین را بزنید.\nبرای لغو: /cancel`,
+    reply_markup:{keyboard:[[{text:'📝 باز کردن فرم',web_app:{url:r.url}}]],resize_keyboard:true,one_time_keyboard:true}});
+}
+function validateData(form,data,path=''){
+  if(!data||typeof data!=='object'||Array.isArray(data))return {error:'ساختار داده نامعتبر است'};
+  const out={};
+  for(const f of form.fields){
+    let v=data[f.id];
+    const empty=v==null||v===''||(Array.isArray(v)&&!v.length);
+    if(f.type==='subform'){
+      const sub=getForm(f.subformId);if(!sub)continue;
+      if(empty){if(f.required)return {error:`«${f.label}» الزامی است`};out[f.id]=f.multiple?[]:{};continue;}
+      const items=f.multiple?(Array.isArray(v)?v:[v]):[v];const res=[];
+      for(const it of items){const r=validateData(sub,it);if(r.error)return r.error;res.push(r.value);}
+      out[f.id]=f.multiple?res:res[0];continue;
+    }
+    if(empty){
+      if(f.required&&!['boolean','range','color'].includes(f.type))return {error:`«${f.label}» الزامی است`};
+      out[f.id]=v??emptyValue(f);continue;
+    }
+    if(['select','radio','imageradio'].includes(f.type)&&!optsOf(f).includes(v))return {error:`گزینهٔ «${f.label}» معتبر نیست`};
+    if(f.type==='checkboxes'){if(!Array.isArray(v)||v.some(x=>!(f.options||[]).includes(x)))return {error:`گزینه‌های «${f.label}» معتبر نیستند`};}
+    if(['text','textarea','email','url','tel'].includes(f.type)&&typeof v!=='string')return {error:`مقدار «${f.label}» نامعتبر است`};
+    if(['number','range','rating'].includes(f.type)&&typeof v!=='number')return {error:`مقدار «${f.label}» نامعتبر است`};
+    out[f.id]=v;
+  }
+  return {value:out};
+}
+async function onWebAppData(m){
+  const chat=m.chat.id,rm={remove_keyboard:true};
+  const s=Sess.get(chat);
+  let p;try{p=JSON.parse(m.web_app_data.data);}catch{return tg('sendMessage',{chat_id:chat,text:'⚠️ داده‌های دریافت‌شده خوانا نیست.',reply_markup:rm});}
+  const form=getForm(p.f);
+  if(!form||!form.telegram)return tg('sendMessage',{chat_id:chat,text:'این فرم دیگر در دسترس نیست.',reply_markup:rm});
+  const r=validateData(form,p.d);
+  if(r.error)return tg('sendMessage',{chat_id:chat,text:'⚠️ '+r.error+'\nدوباره /forms را بزنید.',reply_markup:rm});
+  const from=(s&&s.from)||{id:m.from.id,name:fullName(m.from),username:m.from.username||''};
+  const rec={id:uid(),createdAt:Date.now(),data:r.value,source:{platform:'telegram',chatId:chat,name:from.name,username:from.username,via:'miniapp'}};
+  const arr=recordsOf(form.id);arr.push(rec);setRecords(form.id,arr);
+  Sess.set(chat,null);
+  await tg('sendMessage',{chat_id:chat,text:'✅ اطلاعات شما ثبت شد. سپاس!\nبرای تکمیل فرم دیگر /forms را بزنید.',reply_markup:rm});
+  toast(`رکورد جدید از تلگرام: ${form.title}`);notifyRecord(form,rec);
+  const hs=location.hash||'#/';
+  if(hs==='#/'||hs==='#/forms'||hs.startsWith('#/records/'+form.id)||hs==='#/reports')route();
+}
+// صفحهٔ داخل تلگرام
+function loadTelegramScript(){
+  return new Promise(ok=>{
+    if(window.Telegram&&window.Telegram.WebApp)return ok(window.Telegram.WebApp);
+    const sc=document.createElement('script');sc.src='https://telegram.org/js/telegram-web-app.js';
+    sc.onload=()=>ok(window.Telegram&&window.Telegram.WebApp);sc.onerror=()=>ok(null);
+    document.head.appendChild(sc);
+  });
+}
+async function bootMini(){
+  const app=$('#app');app.innerHTML='';
+  const wrap=h('div',{class:'mini-wrap'});app.append(wrap);
+  const fail=t=>{wrap.innerHTML='';wrap.append(h('div',{class:'empty'},t));};
+  let def;
+  try{def=await unpack(new URLSearchParams(location.search).get('m')||'');}catch(e){return fail('لینک فرم معتبر نیست: '+e.message);}
+  def.forms.forEach(f=>{VIRTUAL[f.id]=f;});
+  const form=VIRTUAL[def.id];if(!form)return fail('فرم پیدا نشد.');
+  const wa=await loadTelegramScript();
+  if(wa){try{wa.ready();wa.expand();}catch{}}
+  const ui=buildFormUI(form,{},0);
+  const hasNum=def.forms.some(f=>f.fields.some(x=>x.numbered));
+  const err=h('div',{class:'err'});
+  wrap.append(h('h1',{},form.title),form.description?h('p',{class:'desc'},form.description):null,
+    hasNum?h('div',{class:'note'},'تصویر هر گزینه در گفتگوی ربات فرستاده شده است؛ شماره‌ها با آن‌ها یکی است.'):null,
+    ui.el,err,
+    h('div',{class:'btn-row'},h('button',{type:'button',class:'btn primary',onclick:()=>{
+      err.textContent='';
+      if(!ui.validate()){err.textContent='لطفاً موارد مشخص‌شده را اصلاح کنید.';return;}
+      const d=ui.get();
+      const clean=o=>{if(Array.isArray(o))return o.map(clean);if(o&&typeof o==='object'){const r={};for(const k in o){const v=clean(o[k]);if(v===''||v==null||(Array.isArray(v)&&!v.length)||(v&&typeof v==='object'&&!Array.isArray(v)&&!Object.keys(v).length))continue;r[k]=v;}return r;}return o;};
+      const payload=JSON.stringify({f:def.id,d:clean(d)});
+      if(new TextEncoder().encode(payload).length>4096){err.textContent='حجم پاسخ از حد مجاز تلگرام (۴۰۹۶ بایت) بیشتر است؛ پاسخ‌ها را کوتاه‌تر کنید.';return;}
+      if(!wa||!wa.sendData){err.textContent='این صفحه باید از داخل تلگرام و با دکمهٔ «باز کردن فرم» ربات باز شود.';return;}
+      wa.sendData(payload);
+    }},'ثبت و ارسال')));
 }
 
 const cbKeyboard=(f,sel)=>[...(f.options||[]).map((o,i)=>[tbtn((sel.includes(i)?'✅ ':'⬜ ')+o,'c:'+i)]),[tbtn('تأیید','ok')]];
@@ -1555,6 +1715,7 @@ async function finish(chat,s){
 async function onMessage(m){
   if(!m.chat||m.chat.type!=='private'||!m.from)return;
   const chat=m.chat.id,text=(m.text||'').trim();
+  if(m.web_app_data)return onWebAppData(m);
   if(!m.text){
     const s0=Sess.get(chat);
     return s0?tsend(chat,'لطفاً پاسخ را به‌صورت متن بفرستید.'):tsend(chat,'برای شروع /forms را بزنید.');
@@ -1569,9 +1730,10 @@ async function onMessage(m){
     return showForms(chat);
   }
   if(cmd==='/forms'){subscribe(m.from,m.chat);return showForms(chat);}
-  if(cmd==='/cancel'){Sess.set(chat,null);return tsend(chat,'لغو شد. برای شروع دوباره /forms را بزنید.');}
+  if(cmd==='/cancel'){Sess.set(chat,null);return tg('sendMessage',{chat_id:chat,text:'لغو شد. برای شروع دوباره /forms را بزنید.',reply_markup:{remove_keyboard:true}});}
   if(cmd==='/stop'){markInactive(chat);Sess.set(chat,null);return tsend(chat,'دیگر پیامی برای شما ارسال نمی‌شود. برای عضویت دوباره /start را بزنید.');}
   const s=Sess.get(chat);
+  if(s&&s.mini)return tsend(chat,'برای پر کردن فرم دکمهٔ «📝 باز کردن فرم» را بزنید (یا /cancel).');
   if(!s||!s.q||s.q.t!=='f')return tsend(chat,'برای شروع /forms را بزنید.');
   const c=curField(s);if(!c)return tsend(chat,'برای شروع /forms را بزنید.');
   if(cmd==='/skip'){
@@ -1709,6 +1871,12 @@ async function diagnose(){
     if((w.pending_update_count||0)>0&&!Poll.running)L.push('⚠ پیام منتظر است ولی «دریافت پیام‌ها» روشن نیست؛ «شروع دریافت» را بزنید.');
     if((w.pending_update_count||0)>0&&Poll.running)L.push('⚠ پیام‌ها در تلگرام می‌مانند ولی برنامه آن‌ها را نمی‌گیرد؛ شاید برنامه در جای دیگری هم باز است.');
   }catch(e){L.push('✗ خواندن وضعیت وب‌هوک ناموفق: '+e.message);}
+  const mf=tgForms().filter(f=>f.tgMode==='mini');
+  if(mf.length){
+    L.push(`فرم‌های حالت Mini App: ${mf.map(f=>f.title).join('، ')}`);
+    L.push(miniBase()?`آدرس عمومی برنامه: ${miniBase()}`:'✗ آدرس عمومی https برنامه (Mini App) وارد نشده است.');
+    for(const f of mf){const r=await miniUrl(f);L.push(r.error?`✗ «${f.title}»: ${r.error}`:`✓ «${f.title}»: طول لینک ${r.url.length} نویسه`);}
+  }
   const subs=DB.get('tgsubs',[]),fs=tgForms();
   L.push(`مشترکین ثبت‌شده: ${subs.length}`);
   L.push(`فرم‌های فعال برای ربات: ${fs.length}${fs.length?' ('+fs.map(f=>f.title).join('، ')+')':' — هیچ فرمی فعال نیست'}`);
@@ -1750,7 +1918,7 @@ function collectorCard(){
   paint();
   return box;
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&DB.get('collector',{}).on&&!Poll.running)startPolling().catch(()=>{});});
+document.addEventListener('visibilitychange',()=>{if(!IS_MINI&&document.visibilityState==='visible'&&DB.get('collector',{}).on&&!Poll.running)startPolling().catch(()=>{});});
 
 /* router */
 function route(){
@@ -1779,7 +1947,9 @@ function route(){
     }
   }catch(e){console.error(e);page({title:'خطا',back:'#/'},h('div',{class:'empty'},'خطایی رخ داد: '+e.message));}
 }
-window.addEventListener('hashchange',route);
+window.addEventListener('hashchange',()=>{if(!IS_MINI)route();});
+if(IS_MINI){applySettings();bootMini();}
+else{
 loadLucide();buildDrawer();applySettings();route();scheduleUpdateChecks();setTimeout(checkIfDue,3000);
 if(DB.get('collector',{}).on)startPolling().catch(()=>{});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
@@ -1789,6 +1959,7 @@ if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
     swReg=r;
     r.addEventListener('updatefound',()=>{checkForUpdate({silent:true});});
   }).catch(()=>{});
+}
 }
 </script>
 </body>

@@ -24,6 +24,7 @@ self.addEventListener('message', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
+  if (url.searchParams.has('m')) return; // لینک‌های Mini App (فرم داخل پارامتر) کش نمی‌شوند
   if (url.searchParams.has('t')) return; // درخواست‌های بررسی نسخه (?t=…) همیشه از شبکه
   const sameOrigin = url.origin === location.origin;
   const isFont = FONT_HOSTS.includes(url.hostname);
