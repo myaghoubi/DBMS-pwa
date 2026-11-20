@@ -711,12 +711,12 @@ function currentUser(){
   const u=DB.get('users',[]).find(x=>x.id===ses.id);
   return u&&u.active!==false&&u.hash?u:null;
 }
-const permsOf=u=>{const r=u&&DB.get('roles',[]).find(x=>x.name===u.role);return r?r.perms||[]:[];};
+const permsOf=u=>{const rs=DB.get('roles',[]);return [...new Set(((u&&u.roles)||[]).flatMap(n=>(rs.find(x=>x.name===n)||{}).perms||[]))];};
 const can=(...ps)=>!authOn()||(()=>{const mine=permsOf(currentUser());return ps.some(p=>mine.includes(p));})();
 const ROUTE_PERM={forms:['forms','records'],builder:['forms'],fill:['records'],records:['records'],reports:['reports'],users:['users'],process:['process'],messenger:['settings'],bale:['settings'],telegram:['settings'],backup:['settings'],update:['settings'],settings:['settings']};
 const allowedRoute=a=>{const need=ROUTE_PERM[a||''];return !need||can(...need);};
 // دست‌کم یک کاربر فعال دارای گذرواژه و نقشی با دسترسی «کاربران» باید بماند
-const adminOk=(users,roles)=>users.some(u=>u.active!==false&&u.hash&&((roles.find(r=>r.name===u.role)||{}).perms||[]).includes('users'));
+const adminOk=(users,roles)=>users.some(u=>u.active!==false&&u.hash&&(u.roles||[]).some(n=>((roles.find(r=>r.name===n)||{}).perms||[]).includes('users')));
 const failState=()=>{try{return JSON.parse(localStorage.getItem('fb.authfail'))||{n:0,until:0};}catch{return {n:0,until:0};}};
 function logout(){clearSession();buildDrawer();route();}
 function viewLogin(){
@@ -779,7 +779,7 @@ function buildDrawer(){
   drawerEl=h('nav',{id:'drawer','aria-label':'منوی اصلی'},
     h('div',{class:'dr-head'},h('b',{id:'dr-name'},appName()),h('span',{class:'muted sm'},'نسخه '+fa(APP_VERSION))),
     h('div',{class:'dr-list'},MENU.filter(m=>allowedRoute(m[0])).map(m=>h('a',{href:m[3],'data-id':m[0],class:'dr-item',onclick:closeDrawer},h('span',{class:'dr-ic'},ic(m[2])),m[1]))),
-    cu?h('div',{class:'dr-foot'},h('div',{class:'who'},h('b',{},cu.name),h('span',{class:'muted sm'},cu.role)),h('button',{class:'btn',onclick:()=>{if(confirm('از حساب خارج شوید؟'))logout();}},'خروج')):null);
+    cu?h('div',{class:'dr-foot'},h('div',{class:'who'},h('b',{},cu.name),h('span',{class:'muted sm'},(cu.roles||[]).join('، '))),h('button',{class:'btn',onclick:()=>{if(confirm('از حساب خارج شوید؟'))logout();}},'خروج')):null);
   document.body.append(backdropEl,drawerEl);
 }
 const openDrawer=()=>{drawerEl.classList.add('open');backdropEl.classList.add('show');};
@@ -806,12 +806,26 @@ function applySettings(){
   document.title=appName();
 }
 const PERMS=[['forms','مدیریت فرم‌ها'],['records','ثبت و ویرایش رکورد'],['reports','مشاهدهٔ گزارش‌ها'],['users','مدیریت کاربران'],['process','مدیریت فرآیندها'],['settings','تنظیمات برنامه']];
+const SUB_ROLE='مشترک پیام‌رسان';
+const subRoleName=()=>((DB.get('roles',[])||[]).find(r=>r.sub)||{}).name||SUB_ROLE;
 function seed(){
-  if(DB.get('roles',null))return;
-  DB.set('roles',[
+  if(!DB.get('roles',null))DB.set('roles',[
     {id:uid(),name:'مدیر کل',perms:PERMS.map(p=>p[0])},
     {id:uid(),name:'اپراتور',perms:['records','reports']},
     {id:uid(),name:'ناظر',perms:['reports']}]);
+  migrateRoles();
+}
+// کاربران چند نقش دارند؛ مشترکین پیام‌رسان هم نقش پیش‌فرض «مشترک پیام‌رسان» را می‌گیرند
+function migrateRoles(){
+  let rs=DB.get('roles',[]),ch=false;
+  if(!rs.some(r=>r.sub)){rs=[...rs,{id:uid(),name:SUB_ROLE,perms:[],sub:true}];DB.set('roles',rs);}
+  const sn=subRoleName();
+  const us=DB.get('users',[]);
+  if(us.some(u=>!Array.isArray(u.roles))){
+    DB.set('users',us.map(u=>{if(Array.isArray(u.roles))return u;const {role,...r}=u;return {...r,roles:role?[role]:[]};}));
+  }
+  const ts=DB.get('tgsubs',[]);
+  if(ts.some(t=>!Array.isArray(t.roles)))DB.set('tgsubs',ts.map(t=>Array.isArray(t.roles)?t:{...t,roles:[sn]}));
 }
 function upsert(key,obj){const a=DB.get(key,[]);const i=a.findIndex(x=>x.id===obj.id);if(i>=0)a[i]=obj;else a.push(obj);DB.set(key,a);}
 function removeFrom(key,id){DB.set(key,DB.get(key,[]).filter(x=>x.id!==id));}
@@ -975,12 +989,21 @@ function viewReports(){
 /* ---- users & roles ---- */
 function userSchema(isNew){return {id:'__user',title:'کاربر',fields:[
   F('name','نام و نام خانوادگی','text',{required:true}),F('username','نام کاربری','text',{required:true}),
-  F('phone','موبایل','tel'),F('role','نقش','select',{required:true,options:DB.get('roles',[]).map(r=>r.name)}),
+  F('phone','موبایل','tel'),F('roles','نقش‌ها (یک یا چند نقش)','checkboxes',{required:true,options:DB.get('roles',[]).map(r=>r.name)}),
   F('password',authOn()?'گذرواژه':'گذرواژه (برای ورود به سیستم)','password',{required:authOn()&&!!isNew,help:'هنگام ویرایش، فقط برای تغییر گذرواژه پر کنید. حداقل ۶ نویسه.'}),
   F('active','فعال','boolean'),F('bale','شناسهٔ چت بله','text'),F('tg','شناسهٔ چت تلگرام','text')]};}
 function roleSchema(){return {id:'__role',title:'نقش',fields:[
   F('name','نام نقش','text',{required:true}),F('perms','دسترسی‌ها','checkboxes',{options:PERMS.map(p=>p[1])})]};}
 
+const roleCount=n=>[...DB.get('users',[]),...DB.get('tgsubs',[])].filter(x=>(x.roles||[]).includes(n)).length;
+function subsSection(){
+  const subs=DB.get('tgsubs',[]);
+  if(!subs.length)return h('div',{class:'empty sm'},'هنوز کسی عضو ربات نشده است.');
+  const edit=sb=>editEntity({id:'__subrole',title:'نقش‌های مشترک',fields:[F('roles','نقش‌ها','checkboxes',{options:DB.get('roles',[]).map(r=>r.name)})]},{roles:sb.roles||[]},`نقش‌های «${sb.name}»`,d=>{
+    DB.set('tgsubs',DB.get('tgsubs',[]).map(x=>x.id===sb.id?{...x,roles:d.roles}:x));viewUsers('users');});
+  return h('div',{},subs.map(sb=>entityCard(sb.name||String(sb.id),`تلگرام${sb.username?' · @'+sb.username:''}${sb.active===false?' · غیرفعال':''}`,
+    {badge:(sb.roles||[]).join('، ')||'بدون نقش',onEdit:()=>edit(sb),onDelete:()=>{if(confirm('این مشترک حذف شود؟')){DB.set('tgsubs',DB.get('tgsubs',[]).filter(x=>x.id!==sb.id));viewUsers('users');}}})));
+}
 function authCard(){
   const on=authOn(),cu=currentUser();
   const body=on
@@ -1007,7 +1030,7 @@ function enableAuth(){
       const cred=await makeCred(d.password);
       const us=DB.get('users',[]);
       const ex=us.find(u=>u.username===d.username);
-      const user={...(ex||{id:uid(),phone:''}),name:d.name,username:d.username,role:role.name,active:true,...cred};
+      const user={...(ex||{id:uid(),phone:''}),name:d.name,username:d.username,roles:[...new Set([...((ex&&ex.roles)||[]),role.name])],active:true,...cred};
       upsert('users',user);
       DB.set('auth',{on:true});setSession(user.id,false);
       buildDrawer();toast('ورود به سیستم فعال شد');route();
@@ -1042,11 +1065,13 @@ function viewUsers(tab){
       })();
     });
     page({title:'کاربران و نقش‌ها'},tabs,note,
-      us.length?us.map(u=>entityCard(u.name,`@${u.username}${u.phone?' · '+fa(u.phone):''}${authOn()&&!u.hash?' · بدون گذرواژه (نمی‌تواند وارد شود)':''}`,{badge:u.active?u.role:'غیرفعال',onEdit:()=>open(u),onDelete:()=>{
+      us.length?us.map(u=>entityCard(u.name,`@${u.username}${u.phone?' · '+fa(u.phone):''}${authOn()&&!u.hash?' · بدون گذرواژه (نمی‌تواند وارد شود)':''}`,{badge:u.active?(u.roles||[]).join('، ')||'بدون نقش':'غیرفعال',onEdit:()=>open(u),onDelete:()=>{
           if(authOn()){const cu=currentUser();if(cu&&cu.id===u.id){alert('حساب خودتان را نمی‌توانید حذف کنید.');return;}
             if(!adminOk(DB.get('users',[]).filter(x=>x.id!==u.id),DB.get('roles',[]))){alert('دست‌کم یک مدیر باید باقی بماند.');return;}}
           if(confirm('کاربر حذف شود؟')){removeFrom('users',u.id);viewUsers('users');}}}))
         :h('div',{class:'empty'},'هنوز کاربری تعریف نشده است.'),
+      h('h3',{},`مشترکین پیام‌رسان (${fa(DB.get('tgsubs',[]).length)})`),
+      subsSection(),
       fab('＋ کاربر جدید',()=>open(null)));
   }else{
     const rs=DB.get('roles',[]);
@@ -1056,14 +1081,19 @@ function viewUsers(tab){
       if(DB.get('roles',[]).some(x=>x.name===d.name&&x.id!==r?.id)){toast('این نام تکراری است');return false;}
       if(authOn()){
         const nr=DB.get('roles',[]).map(x=>x.id===r?.id?{...x,name:d.name,perms}:x);
-        const nu=DB.get('users',[]).map(u=>r&&u.role===r.name?{...u,role:d.name}:u);
+        const nu=DB.get('users',[]).map(u=>r&&(u.roles||[]).includes(r.name)?{...u,roles:u.roles.map(n=>n===r.name?d.name:n)}:u);
         if(!adminOk(nu,nr)){toast('با این تغییر هیچ مدیری باقی نمی‌ماند');return false;}
       }
-      if(r&&r.name!==d.name)DB.set('users',DB.get('users',[]).map(u=>u.role===r.name?{...u,role:d.name}:u));
-      upsert('roles',{id:r?.id||uid(),name:d.name,perms});if(authOn()&&!currentUser())clearSession();buildDrawer();viewUsers('roles');});
+      if(r&&r.name!==d.name){
+        const rn=a=>(a||[]).map(n=>n===r.name?d.name:n);
+        DB.set('users',DB.get('users',[]).map(u=>({...u,roles:rn(u.roles)})));
+        DB.set('tgsubs',DB.get('tgsubs',[]).map(t=>({...t,roles:rn(t.roles)})));
+      }
+      upsert('roles',{...(r||{}),id:r?.id||uid(),name:d.name,perms});if(authOn()&&!currentUser())clearSession();buildDrawer();viewUsers('roles');});
     page({title:'کاربران و نقش‌ها'},tabs,note,
-      rs.map(r=>entityCard(r.name,toLabels(r.perms).join('، ')||'بدون دسترسی',{badge:`${fa(DB.get('users',[]).filter(u=>u.role===r.name).length)} کاربر`,onEdit:()=>open(r),onDelete:()=>{
-        if(DB.get('users',[]).some(u=>u.role===r.name)){alert('این نقش به کاربرانی داده شده و حذف نمی‌شود.');return;}
+      rs.map(r=>entityCard(r.name,toLabels(r.perms).join('، ')||'بدون دسترسی',{badge:`${fa(roleCount(r.name))} عضو`,onEdit:()=>open(r),onDelete:()=>{
+        if(r.sub){alert('نقش پیش‌فرض مشترکین پیام‌رسان حذف نمی‌شود.');return;}
+        if(roleCount(r.name)){alert('این نقش به کاربران یا مشترکینی داده شده و حذف نمی‌شود.');return;}
         if(confirm('نقش حذف شود؟')){removeFrom('roles',r.id);viewUsers('roles');}}})),
       fab('＋ نقش جدید',()=>open(null)));
   }
@@ -1570,7 +1600,7 @@ const fullName=u=>[u.first_name,u.last_name].filter(Boolean).join(' ')||u.userna
 function subscribe(from,chat){
   const subs=DB.get('tgsubs',[]);
   let s=subs.find(x=>x.id===chat.id);
-  if(!s){s={id:chat.id,joinedAt:Date.now()};subs.push(s);}
+  if(!s){s={id:chat.id,joinedAt:Date.now(),roles:[subRoleName()]};subs.push(s);}
   Object.assign(s,{name:fullName(from),username:from.username||'',active:true});
   DB.set('tgsubs',subs);
   return s;
