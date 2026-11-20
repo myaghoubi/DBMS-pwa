@@ -91,6 +91,22 @@ svg.lucide{width:1.15em;height:1.15em;stroke-width:2;flex:none}
 .tile-t{display:flex;align-items:center;gap:8px;font-size:15px}.tile-t svg.lucide{width:18px;height:18px;color:var(--pri)}
 .star svg.lucide{width:28px;height:28px}.star.on svg.lucide{fill:currentColor}
 .tile{gap:4px;padding:12px 14px}
+/* image radio */
+.imgopts{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
+.imgopt{position:relative;display:flex;flex-direction:column;gap:6px;align-items:center;border:2px solid var(--line);border-radius:12px;padding:8px;cursor:pointer;background:var(--card);text-align:center}
+.imgopt input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.imgopt img,.imgopt-ph{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;background:var(--bg)}
+.imgopt.sel{border-color:var(--pri);background:var(--soft);box-shadow:0 0 0 1px var(--pri)}
+.imgopt:focus-within{outline:2px solid var(--pri);outline-offset:2px}
+.imgopt-t{font-weight:600;font-size:14px}
+.ro-thumb{width:44px;height:44px;object-fit:cover;border-radius:8px;vertical-align:middle}
+.choices{display:flex;flex-direction:column;gap:8px;margin:6px 0 8px}
+.ch-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px}
+.ch-thumb{flex:none;width:64px;height:64px;border-radius:10px;border:1px dashed var(--line);background:var(--bg);cursor:pointer;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--muted);font:inherit}
+.ch-thumb img{width:100%;height:100%;object-fit:cover}
+.ch-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.ch-main input{width:100%}
+.ch-rm{padding:3px 10px;font-size:12.5px}
 /* fields */
 .field{margin-bottom:14px}
 .lbl{font-weight:600;margin-bottom:4px}
@@ -333,7 +349,7 @@ function openJalaliPicker(cur,cb){
 const TYPES={
   text:{label:'متن کوتاه'},textarea:{label:'متن بلند'},number:{label:'عدد'},
   email:{label:'ایمیل'},tel:{label:'تلفن'},url:{label:'آدرس وب'},
-  select:{label:'لیست کشویی',opts:1},radio:{label:'تک‌انتخابی (رادیویی)',opts:1},checkboxes:{label:'چندانتخابی (چک‌باکس)',opts:1},
+  select:{label:'لیست کشویی',opts:1},radio:{label:'تک‌انتخابی (رادیویی)',opts:1},imageradio:{label:'دکمه‌ای رادیویی با تصویر',choices:1},checkboxes:{label:'چندانتخابی (چک‌باکس)',opts:1},
   boolean:{label:'سوییچ بله/خیر'},
   jdate:{label:'تاریخ شمسی (تقویم فارسی)'},date:{label:'تاریخ میلادی'},time:{label:'ساعت'},
   range:{label:'اسلایدر'},rating:{label:'امتیاز ستاره‌ای'},color:{label:'رنگ'},
@@ -371,6 +387,7 @@ function valueNode(f,v,depth=0){
   }
   if(isEmpty(v))return '—';
   switch(f.type){
+    case 'imageradio':{const ch=(f.choices||[]).find(c=>c.label===v);return h('span',{},ch&&ch.img?h('img',{src:ch.img,alt:'',class:'ro-thumb'}):null,' ',String(v));}
     case 'color':{const s=h('span',{class:'swatch'});s.style.background=String(v);return h('span',{},s,' ',h('span',{dir:'ltr'},v));}
     case 'rating':{const max=f.max||5;return '★'.repeat(v)+'☆'.repeat(Math.max(0,max-v));}
     case 'jdate':return jdLong(v);
@@ -427,6 +444,22 @@ function makeField(f,value,depth){
   };
 }
 
+/* ---- تصویر گزینه‌ها ---- */
+function fileToDataURL(file,max=360){
+  return new Promise((ok,no)=>{
+    const url=URL.createObjectURL(file),im=new Image();
+    im.onload=()=>{
+      const k=Math.min(1,max/Math.max(im.width,im.height)),w=Math.max(1,Math.round(im.width*k)),hh=Math.max(1,Math.round(im.height*k));
+      const cv=document.createElement('canvas');cv.width=w;cv.height=hh;
+      const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,hh);g.drawImage(im,0,0,w,hh);
+      URL.revokeObjectURL(url);ok(cv.toDataURL('image/jpeg',0.82));
+    };
+    im.onerror=()=>{URL.revokeObjectURL(url);no(new Error('فایل تصویر معتبر نیست'));};
+    im.src=url;
+  });
+}
+const optsOf=f=>f.type==='imageradio'?(f.choices||[]).map(c=>c.label):(f.options||[]);
+
 function buildControl(f,value,depth){
   switch(f.type){
     case 'text':case 'email':case 'tel':case 'url':case 'number':case 'time':case 'date':case 'color':{
@@ -443,6 +476,18 @@ function buildControl(f,value,depth){
     case 'select':{
       const s=h('select',{},h('option',{value:''},'انتخاب کنید…'),(f.options||[]).map(o=>h('option',{value:o,selected:o===value},o)));
       return {el:s,get:()=>s.value};
+    }
+    case 'imageradio':{
+      const name=uid();let cur=value??'';
+      const labels=[];
+      const mark=()=>labels.forEach(([l,v])=>l.classList.toggle('sel',v===cur));
+      const box=h('div',{class:'imgopts',role:'radiogroup'},(f.choices||[]).map(ch=>{
+        const inp=h('input',{type:'radio',name,checked:ch.label===value,onchange:()=>{cur=ch.label;mark();}});
+        const l=h('label',{class:'imgopt'},inp,ch.img?h('img',{src:ch.img,alt:ch.label,loading:'lazy'}):h('span',{class:'imgopt-ph'}),h('span',{class:'imgopt-t'},ch.label));
+        labels.push([l,ch.label]);return l;
+      }));
+      mark();
+      return {el:box,get:()=>cur};
     }
     case 'radio':{
       const name=uid();let cur=value??'';
@@ -1149,7 +1194,7 @@ function viewBuilder(id){
     if(!draft.fields.length)listEl.append(h('div',{class:'empty sm'},'هنوز فیلدی اضافه نشده است.'));
     draft.fields.forEach((f,i)=>{
       const sub=f.type==='subform'?getForm(f.subformId):null;
-      const info=TYPES[f.type].label+(f.required?' · اجباری':'')+(f.type==='subform'?` · «${sub?sub.title:'؟'}» · ${f.mode==='inline'?'درون‌خط':'دیالوگ'} · ${f.multiple?'چندرکوردی':'تک‌رکوردی'}`:'');
+      const info=TYPES[f.type].label+(f.type==='imageradio'?` · ${fa((f.choices||[]).length)} گزینه`:'')+(f.required?' · اجباری':'')+(f.type==='subform'?` · «${sub?sub.title:'؟'}» · ${f.mode==='inline'?'درون‌خط':'دیالوگ'} · ${f.multiple?'چندرکوردی':'تک‌رکوردی'}`:'');
       listEl.append(h('div',{class:'fcard'},
         h('div',{class:'fmain'},h('b',{},f.label),h('div',{class:'muted sm'},info)),
         h('div',{class:'fbtns'},
@@ -1165,7 +1210,8 @@ function viewBuilder(id){
     draft.title=draft.title.trim();
     const forms=Store.forms;const i=forms.findIndex(x=>x.id===draft.id);
     if(i>=0)forms[i]=draft;else forms.push(draft);
-    Store.forms=forms;toast('فرم ذخیره شد');location.hash='#/forms';
+    try{Store.forms=forms;}catch(e){toast('حافظهٔ مرورگر پر است؛ تصویرها را کمتر یا کوچک‌تر کنید');return;}
+    toast('فرم ذخیره شد');location.hash='#/forms';
   }
   drawList();
   page({title:ex?'ویرایش فرم':'فرم جدید',back:'#/forms',actions:[h('button',{class:'icon-btn','aria-label':'ذخیره',onclick:saveForm},'✓')]},
@@ -1189,6 +1235,29 @@ function openFieldEditor(draft,field,onSave){
   function drawCfg(){
     cfg.innerHTML='';const t=f.type;
     if(TYPES[t].opts)cfg.append(row('گزینه‌ها (هر گزینه در یک خط)',h('textarea',{rows:5,value:(f.options||[]).join('\n'),oninput:e=>{f.options=e.target.value.split('\n').map(s=>s.trim()).filter(Boolean);}})));
+    if(TYPES[t].choices){
+      if(!Array.isArray(f.choices)||!f.choices.length)f.choices=[{label:'',img:''},{label:'',img:''}];
+      const list=h('div',{class:'choices'});
+      const draw=()=>{
+        list.innerHTML='';
+        f.choices.forEach((c,i)=>{
+          const file=h('input',{type:'file',accept:'image/*',hidden:true,onchange:async e=>{
+            const fl=e.target.files[0];e.target.value='';if(!fl)return;
+            try{c.img=await fileToDataURL(fl);draw();}catch(er){toast(er.message);}}});
+          const thumb=h('button',{type:'button',class:'ch-thumb','aria-label':'انتخاب تصویر',onclick:()=>file.click()},
+            c.img?h('img',{src:c.img,alt:''}):h('span',{class:'muted sm'},'تصویر'));
+          list.append(h('div',{class:'ch-row'},thumb,file,
+            h('div',{class:'ch-main'},
+              h('input',{type:'text',placeholder:`عنوان گزینهٔ ${fa(i+1)}`,value:c.label,oninput:e=>{c.label=e.target.value;}}),
+              c.img?h('button',{type:'button',class:'btn ch-rm',onclick:()=>{c.img='';draw();}},'حذف تصویر'):null),
+            h('button',{type:'button',class:'icon-btn','aria-label':'حذف گزینه',onclick:()=>{f.choices.splice(i,1);draw();}},'✕')));
+        });
+      };
+      draw();
+      cfg.append(h('div',{class:'row'},h('span',{},'گزینه‌ها و تصویر هر گزینه'),list,
+        h('button',{type:'button',class:'btn',onclick:()=>{f.choices.push({label:'',img:''});draw();}},'＋ افزودن گزینه'),
+        h('div',{class:'help'},'تصویرها خودکار کوچک می‌شوند (حداکثر ۳۶۰ پیکسل) تا حافظه کمتر پر شود.')));
+    }
     if(['text','textarea','email','tel','url','number'].includes(t))cfg.append(row('متن راهنمای داخل فیلد',h('input',{type:'text',value:f.placeholder||'',oninput:e=>{f.placeholder=e.target.value;}})));
     if(t==='number')cfg.append(h('div',{class:'pair'},row('حداقل',numIn('min')),row('حداکثر',numIn('max'))));
     if(t==='range')cfg.append(h('div',{class:'pair'},row('حداقل',numIn('min','0')),row('حداکثر',numIn('max','100'))),row('گام',numIn('step','1')));
@@ -1217,6 +1286,13 @@ function openFieldEditor(draft,field,onSave){
       if(!f.label.trim())return toast('عنوان فیلد را وارد کنید');
       if(TYPES[f.type].opts&&!(f.options||[]).length)return toast('حداقل یک گزینه وارد کنید');
       if(f.type==='subform'&&!f.subformId)return toast('یک فرم برای زیرفرم انتخاب کنید');
+      if(f.type==='imageradio'){
+        const cleaned=(f.choices||[]).filter(c=>c.label.trim()||c.img).map(c=>({label:c.label.trim(),img:c.img||''}));
+        if(cleaned.length<2)return toast('حداقل دو گزینه لازم است');
+        if(cleaned.some(c=>!c.label))return toast('برای همهٔ گزینه‌ها عنوان وارد کنید');
+        if(new Set(cleaned.map(c=>c.label)).size!==cleaned.length)return toast('عنوان گزینه‌ها نباید تکراری باشد');
+        f.choices=cleaned;
+      }else delete f.choices;
       f.label=f.label.trim();
       if(f.type!=='subform'){delete f.subformId;delete f.mode;delete f.multiple;}
       onSave(f);d.close();}},'ذخیره'),
@@ -1281,6 +1357,27 @@ const tg=(method,body,signal)=>botCall('telegram',method,body,signal);
 const tbtn=(text,data)=>({text,callback_data:data});
 const tsend=(chat,text,kb)=>tg('sendMessage',{chat_id:chat,text,...(kb&&kb.length?{reply_markup:{inline_keyboard:kb}}:{})});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function tgUpload(method,fields,files){
+  const c=DB.get('telegram',{});
+  const base=(c.baseUrl||PLATFORMS.telegram.base).replace(/\/+$/,'');
+  const fd=new FormData();
+  for(const k in fields)fd.append(k,typeof fields[k]==='string'||typeof fields[k]==='number'?String(fields[k]):JSON.stringify(fields[k]));
+  for(const k in files)fd.append(k,files[k],k+'.jpg');
+  const res=await fetch(`${base}/bot${c.token}/${method}`,{method:'POST',body:fd});
+  const j=await res.json().catch(()=>({}));
+  if(!res.ok||j.ok===false)throw new Error(j.description||('خطای HTTP '+res.status));
+  return j.result;
+}
+// تصویر گزینه‌ها را (به‌صورت آلبوم) پیش از دکمه‌ها می‌فرستد
+async function sendChoiceImages(chat,f){
+  const items=(f.choices||[]).filter(c=>c.img);
+  for(let i=0;i<items.length;i+=10){
+    const chunk=items.slice(i,i+10),files={};
+    for(let k=0;k<chunk.length;k++)files['p'+k]=await (await fetch(chunk[k].img)).blob();
+    if(chunk.length===1)await tgUpload('sendPhoto',{chat_id:chat,caption:chunk[0].label},{photo:files.p0});
+    else await tgUpload('sendMediaGroup',{chat_id:chat,media:chunk.map((c,k)=>({type:'photo',media:'attach://p'+k,caption:c.label}))},files);
+  }
+}
 const Sess={get:id=>DB.get('tgsessions',{})[id],set(id,s){const a=DB.get('tgsessions',{});if(s)a[id]=s;else delete a[id];DB.set('tgsessions',a);}};
 let paintCollector=()=>{};
 const Poll={running:false,ctrl:null,err:'',last:0,gen:0,polls:0,received:0};
@@ -1312,12 +1409,12 @@ async function startForm(chat,from,formId){
 }
 
 const cbKeyboard=(f,sel)=>[...(f.options||[]).map((o,i)=>[tbtn((sel.includes(i)?'✅ ':'⬜ ')+o,'c:'+i)]),[tbtn('تأیید','ok')]];
-function askField(chat,f,s){
+async function askField(chat,f,s){
   let text=f.label+(f.required?' *':'');
   if(f.help)text+='\n'+f.help;
   let kb=[];
   switch(f.type){
-    case 'select':case 'radio':kb=(f.options||[]).map((o,i)=>[tbtn(o,'s:'+i)]);break;
+    case 'select':case 'radio':case 'imageradio':kb=optsOf(f).map((o,i)=>[tbtn(o,'s:'+i)]);break;
     case 'checkboxes':kb=cbKeyboard(f,s.q.sel);text+='\n(چند گزینه را انتخاب کنید و «تأیید» بزنید)';break;
     case 'boolean':kb=[[tbtn('بله','y'),tbtn('خیر','n')]];break;
     case 'rating':{const max=f.max||5;const btns=[];for(let i=1;i<=max;i++)btns.push(tbtn(fa(i),'r:'+i));for(let i=0;i<btns.length;i+=5)kb.push(btns.slice(i,i+5));break;}
@@ -1331,6 +1428,7 @@ function askField(chat,f,s){
     case 'url':text+='\n(مثال: https://example.com)';break;
   }
   if(!f.required)kb.push([tbtn('رد کردن','skip')]);
+  if(f.type==='imageradio'){try{await sendChoiceImages(chat,f);}catch(e){console.warn('choice images',e);}}
   return tsend(chat,text,kb);
 }
 
@@ -1411,7 +1509,7 @@ function parseText(f,raw){
       return m?{value:`${pad(+m[1])}:${m[2]}`}:bad('ساعت را به‌شکل 14:30 وارد کنید.');
     }
     case 'color':{const m=t.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);return m?{value:'#'+m[1].toLowerCase()}:bad('کد رنگ معتبر نیست، مثال: #ff8800');}
-    case 'select':case 'radio':{const o=(f.options||[]).find(x=>x===t);return o?{value:o}:bad('لطفاً یکی از گزینه‌ها را با دکمه‌ها انتخاب کنید.');}
+    case 'select':case 'radio':case 'imageradio':{const o=optsOf(f).find(x=>x===t);return o?{value:o}:bad('لطفاً یکی از گزینه‌ها را با دکمه‌ها انتخاب کنید.');}
     case 'boolean':if(/^(بله|آره|yes|y)$/i.test(t))return {value:true};if(/^(خیر|نه|no|n)$/i.test(t))return {value:false};return bad('از دکمه‌های «بله» و «خیر» استفاده کنید.');
     case 'rating':{const n=Number(toLatin(t));const mx=f.max||5;return Number.isInteger(n)&&n>=1&&n<=mx?{value:n}:bad(`عددی بین ۱ تا ${fa(mx)} بفرستید یا از دکمه‌ها استفاده کنید.`);}
     case 'checkboxes':return bad('گزینه‌ها را با دکمه‌ها انتخاب کنید و «تأیید» بزنید.');
@@ -1481,7 +1579,7 @@ async function onCallback(cb){
   const c=curField(s);if(!c)return;
   const f=c.f;
   if(data==='skip'){if(f.required)return;return setAnswer(chat,s,emptyValue(f));}
-  if(data.startsWith('s:')&&(f.type==='select'||f.type==='radio')){const o=(f.options||[])[+data.slice(2)];return o==null?undefined:setAnswer(chat,s,o);}
+  if(data.startsWith('s:')&&(f.type==='select'||f.type==='radio'||f.type==='imageradio')){const o=optsOf(f)[+data.slice(2)];return o==null?undefined:setAnswer(chat,s,o);}
   if(data.startsWith('c:')&&f.type==='checkboxes'){
     const i=+data.slice(2);if(!(f.options||[])[i])return;
     const k=q.sel.indexOf(i);k>=0?q.sel.splice(k,1):q.sel.push(i);
