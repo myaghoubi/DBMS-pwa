@@ -1368,16 +1368,6 @@ async function tgUpload(method,fields,files){
   if(!res.ok||j.ok===false)throw new Error(j.description||('خطای HTTP '+res.status));
   return j.result;
 }
-// تصویر گزینه‌ها را (به‌صورت آلبوم) پیش از دکمه‌ها می‌فرستد
-async function sendChoiceImages(chat,f){
-  const items=(f.choices||[]).filter(c=>c.img);
-  for(let i=0;i<items.length;i+=10){
-    const chunk=items.slice(i,i+10),files={};
-    for(let k=0;k<chunk.length;k++)files['p'+k]=await (await fetch(chunk[k].img)).blob();
-    if(chunk.length===1)await tgUpload('sendPhoto',{chat_id:chat,caption:chunk[0].label},{photo:files.p0});
-    else await tgUpload('sendMediaGroup',{chat_id:chat,media:chunk.map((c,k)=>({type:'photo',media:'attach://p'+k,caption:c.label}))},files);
-  }
-}
 const Sess={get:id=>DB.get('tgsessions',{})[id],set(id,s){const a=DB.get('tgsessions',{});if(s)a[id]=s;else delete a[id];DB.set('tgsessions',a);}};
 let paintCollector=()=>{};
 const Poll={running:false,ctrl:null,err:'',last:0,gen:0,polls:0,received:0};
@@ -1414,7 +1404,7 @@ async function askField(chat,f,s){
   if(f.help)text+='\n'+f.help;
   let kb=[];
   switch(f.type){
-    case 'select':case 'radio':case 'imageradio':kb=optsOf(f).map((o,i)=>[tbtn(o,'s:'+i)]);break;
+    case 'select':case 'radio':case 'imageradio':kb=optsOf(f).map((o,i)=>[tbtn(o,`s:${s.q.n}:${i}`)]);break;
     case 'checkboxes':kb=cbKeyboard(f,s.q.sel);text+='\n(چند گزینه را انتخاب کنید و «تأیید» بزنید)';break;
     case 'boolean':kb=[[tbtn('بله','y'),tbtn('خیر','n')]];break;
     case 'rating':{const max=f.max||5;const btns=[];for(let i=1;i<=max;i++)btns.push(tbtn(fa(i),'r:'+i));for(let i=0;i<btns.length;i+=5)kb.push(btns.slice(i,i+5));break;}
@@ -1427,9 +1417,40 @@ async function askField(chat,f,s){
     case 'email':text+='\n(مثال: name@example.com)';break;
     case 'url':text+='\n(مثال: https://example.com)';break;
   }
+  if(f.type==='imageradio')return askImageRadio(chat,f,s,text);
   if(!f.required)kb.push([tbtn('رد کردن','skip')]);
-  if(f.type==='imageradio'){try{await sendChoiceImages(chat,f);}catch(e){console.warn('choice images',e);}}
   return tsend(chat,text,kb);
+}
+// هر گزینه یک پیام مستقل است: تصویر + عنوان + دکمهٔ «انتخاب» درست زیر همان تصویر
+async function askImageRadio(chat,f,s,text){
+  const q=s.q,labels=optsOf(f);q.msgs=[];
+  await tsend(chat,text+'\n(زیر هر تصویر روی «انتخاب» بزنید)');
+  const rest=[];
+  for(let i=0;i<labels.length;i++){
+    const ch=f.choices[i];let sent=false;
+    if(ch.img){
+      try{
+        const blob=await (await fetch(ch.img)).blob();
+        const r=await tgUpload('sendPhoto',{chat_id:chat,caption:`${fa(i+1)}. ${labels[i]}`,reply_markup:{inline_keyboard:[[tbtn('✔️ انتخاب: '+labels[i],`s:${q.n}:${i}`)]]}},{photo:blob});
+        q.msgs[i]=r&&r.message_id||null;sent=true;await sleep(50);
+      }catch(e){console.warn('choice image',e);}
+    }
+    if(!sent){q.msgs[i]=null;rest.push([tbtn(labels[i],`s:${q.n}:${i}`)]);}
+  }
+  if(!f.required)rest.push([tbtn('رد کردن','skip')]);
+  Sess.set(chat,s);
+  if(rest.length)await tsend(chat,rest.length===1&&!f.required?'یا:':'سایر گزینه‌ها:',rest);
+}
+// پس از پاسخ، دکمه‌های تصویرها حذف و گزینهٔ انتخاب‌شده علامت می‌خورد
+function closeChoices(chat,f,msgs,value){
+  const labels=optsOf(f);
+  for(let i=0;i<msgs.length;i++){
+    const id=msgs[i];if(!id)continue;
+    const kb={inline_keyboard:[]};
+    (labels[i]===value
+      ?tg('editMessageCaption',{chat_id:chat,message_id:id,caption:`✅ ${fa(i+1)}. ${labels[i]}`,reply_markup:kb})
+      :tg('editMessageReplyMarkup',{chat_id:chat,message_id:id,reply_markup:kb})).catch(()=>{});
+  }
 }
 
 async function ask(chat,s){
@@ -1461,7 +1482,7 @@ async function ask(chat,s){
       await tsend(chat,`▫️ ${f.label}`);
       continue;
     }
-    s.q={t:'f',sel:[]};Sess.set(chat,s);
+    s.q={t:'f',sel:[],n:(s.qn=(s.qn||0)+1)};Sess.set(chat,s);
     return askField(chat,f,s);
   }
 }
@@ -1469,7 +1490,9 @@ async function ask(chat,s){
 const curField=s=>{const fr=s.stack[s.stack.length-1];const form=getForm(fr.formId);return form&&form.fields[fr.i]?{fr,f:form.fields[fr.i]}:null;};
 async function setAnswer(chat,s,value){
   const c=curField(s);if(!c)return;
+  const msgs=c.f.type==='imageradio'&&s.q&&s.q.msgs;
   c.fr.data[c.f.id]=value;c.fr.i++;
+  if(msgs)closeChoices(chat,c.f,msgs,value);
   return ask(chat,s);
 }
 const emptyValue=f=>f.type==='checkboxes'?[]:f.type==='boolean'?false:'';
@@ -1579,7 +1602,11 @@ async function onCallback(cb){
   const c=curField(s);if(!c)return;
   const f=c.f;
   if(data==='skip'){if(f.required)return;return setAnswer(chat,s,emptyValue(f));}
-  if(data.startsWith('s:')&&(f.type==='select'||f.type==='radio'||f.type==='imageradio')){const o=optsOf(f)[+data.slice(2)];return o==null?undefined:setAnswer(chat,s,o);}
+  const sm=data.match(/^s:(\d+):(\d+)$/);
+  if(sm&&(f.type==='select'||f.type==='radio'||f.type==='imageradio')){
+    if(+sm[1]!==q.n)return;  // دکمهٔ مربوط به سؤال قبلی
+    const o=optsOf(f)[+sm[2]];return o==null?undefined:setAnswer(chat,s,o);
+  }
   if(data.startsWith('c:')&&f.type==='checkboxes'){
     const i=+data.slice(2);if(!(f.options||[])[i])return;
     const k=q.sel.indexOf(i);k>=0?q.sel.splice(k,1):q.sel.push(i);
