@@ -114,8 +114,8 @@ svg.lucide{width:1.15em;height:1.15em;stroke-width:2;flex:none}
 .req{color:var(--danger)}
 .help{color:var(--muted);font-size:12.5px;margin-bottom:4px}
 .err{color:var(--danger);font-size:12.5px;min-height:0}
-.field.bad>input,.field.bad>select,.field.bad>textarea,.field.bad>.jd-wrap input{border-color:var(--danger)}
-input[type=text],input[type=email],input[type=tel],input[type=url],input[type=number],input[type=time],input[type=date],select,textarea{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;outline:none}
+.field.bad .pw-wrap input,.field.bad>input,.field.bad>select,.field.bad>textarea,.field.bad>.jd-wrap input{border-color:var(--danger)}
+input[type=text],input[type=password],input[type=email],input[type=tel],input[type=url],input[type=number],input[type=time],input[type=date],select,textarea{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;outline:none}
 input:focus,select:focus,textarea:focus{border-color:var(--pri)}
 input[type=email],input[type=url],input[type=tel]{direction:ltr;text-align:right}
 input[type=color]{width:64px;height:40px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:2px}
@@ -133,7 +133,8 @@ input[type=range]{width:100%;accent-color:var(--pri)}
 .switch input:checked+.slider::after{right:21px}
 .rangebox{display:flex;align-items:center;gap:10px}
 .rangebox output{min-width:44px;text-align:center;font-weight:700;color:var(--pri)}
-.jd-wrap{display:flex;gap:6px}
+.jd-wrap,.pw-wrap{display:flex;gap:6px}.pw-wrap input{flex:1;min-width:0}.pw-wrap .btn{white-space:nowrap}
+input[type=password]{text-align:right}
 .jd-wrap input{cursor:pointer}
 .field.sub{border:1px dashed var(--line);border-radius:12px;padding:10px;background:rgba(127,127,127,.04)}
 .rows{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
@@ -474,6 +475,7 @@ function buildControl(f,value,depth){
       if(f.type==='number'){attrs.step='any';attrs.inputmode='decimal';if(f.min!=null)attrs.min=f.min;if(f.max!=null)attrs.max=f.max;}
       attrs.value=value??(f.type==='color'?'#4f46e5':'');
       const inp=h('input',attrs);
+      if(f.type==='password')return {el:pwBox(inp),get:()=>inp.value};
       return {el:inp,get:()=>f.type==='number'?(inp.value===''?'':Number(inp.value)):inp.value.trim()};
     }
     case 'textarea':{
@@ -645,6 +647,11 @@ const DEFAULT_NAME='مدیریت سیستم‌های اطلاعاتی';
 const appName=()=>{const n=DB.get('settings',{}).appName;return !n||n==='فرم‌ساز'?DEFAULT_NAME:n;};
 
 /* ---------- ورود به سیستم و دسترسی‌ها (سمت مرورگر؛ نه جایگزین امنیت سرور) ---------- */
+function pwBox(inp){
+  const b=h('button',{type:'button',class:'btn','aria-label':'نمایش گذرواژه','aria-pressed':'false',onclick:()=>{
+    const show=inp.type==='password';inp.type=show?'text':'password';b.textContent=show?'پنهان':'نمایش';b.setAttribute('aria-pressed',String(show));inp.focus();}},'نمایش');
+  return h('div',{class:'pw-wrap'},inp,b);
+}
 const enc8=s=>new TextEncoder().encode(s);
 const toB64=u8=>btoa(String.fromCharCode(...u8));
 function sha256hex(str){ // نسخهٔ سادهٔ جاوااسکریپت برای مرورگرهایی که crypto.subtle ندارند (آدرس http غیر امن)
@@ -734,7 +741,7 @@ function viewLogin(){
   app.append(h('div',{class:'login'},h('h1',{},appName()),h('p',{class:'muted'},'برای ادامه وارد شوید.'),
     h('div',{class:'card'},
       h('div',{class:'field'},h('div',{class:'lbl'},'نام کاربری'),un),
-      h('div',{class:'field'},h('div',{class:'lbl'},'گذرواژه'),pw),
+      h('div',{class:'field'},h('div',{class:'lbl'},'گذرواژه'),pwBox(pw)),
       h('label',{class:'chk'},rem,'مرا در این دستگاه به خاطر بسپار (۳۰ روز)'),err,
       h('div',{class:'btn-row'},btn))));
   setTimeout(()=>un.focus(),50);
