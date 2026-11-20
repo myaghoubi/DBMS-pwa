@@ -183,6 +183,11 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.5)}
 .cal-grid button.sel{background:var(--pri);color:var(--pri-fg)}
 #toast{position:fixed;bottom:calc(80px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:9px 18px;border-radius:99px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:99;max-width:90vw;text-align:center}
 #toast.show{opacity:1}
+body.locked #drawer,body.locked .menu-btn,body.locked #backdrop{display:none!important}
+html body.locked #app{margin-right:0!important}
+.login{max-width:380px;margin:8vh auto 0;padding:0 16px}.login h1{font-size:22px;margin:0 0 4px}.login .card{margin-top:14px}
+.dr-foot{border-top:1px solid var(--line);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px}
+.dr-foot .who{display:flex;flex-direction:column;min-width:0}.dr-foot .who span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -463,8 +468,9 @@ const optsOf=f=>f.type==='imageradio'?(f.choices||[]).map(c=>c.label):(f.options
 
 function buildControl(f,value,depth){
   switch(f.type){
-    case 'text':case 'email':case 'tel':case 'url':case 'number':case 'time':case 'date':case 'color':{
+    case 'text':case 'email':case 'tel':case 'url':case 'number':case 'time':case 'date':case 'color':case 'password':{
       const attrs={type:f.type,placeholder:f.placeholder};
+      if(f.type==='password'){attrs.autocomplete='new-password';attrs.dir='ltr';}
       if(f.type==='number'){attrs.step='any';attrs.inputmode='decimal';if(f.min!=null)attrs.min=f.min;if(f.max!=null)attrs.max=f.max;}
       attrs.value=value??(f.type==='color'?'#4f46e5':'');
       const inp=h('input',attrs);
@@ -637,6 +643,104 @@ new MutationObserver(()=>{if(icRaf)return;icRaf=requestAnimationFrame(()=>{icRaf
 const DEFAULT_NAME='مدیریت سیستم‌های اطلاعاتی';
 // نام پیش‌فرض قدیمی («فرم‌ساز») که ممکن است در تنظیمات ذخیره شده باشد به نام جدید تبدیل می‌شود
 const appName=()=>{const n=DB.get('settings',{}).appName;return !n||n==='فرم‌ساز'?DEFAULT_NAME:n;};
+
+/* ---------- ورود به سیستم و دسترسی‌ها (سمت مرورگر؛ نه جایگزین امنیت سرور) ---------- */
+const enc8=s=>new TextEncoder().encode(s);
+const toB64=u8=>btoa(String.fromCharCode(...u8));
+function sha256hex(str){ // نسخهٔ سادهٔ جاوااسکریپت برای مرورگرهایی که crypto.subtle ندارند (آدرس http غیر امن)
+  const K=[];for(let i=0,c=2;K.length<64;c++){let pr=true;for(let j=2;j*j<=c;j++)if(c%j===0){pr=false;break;}if(pr){K.push((Math.pow(c,1/3)%1*4294967296)|0);i++;}}
+  let H=[];for(let i=0,c=2;H.length<8;c++){let pr=true;for(let j=2;j*j<=c;j++)if(c%j===0){pr=false;break;}if(pr)H.push((Math.pow(c,1/2)%1*4294967296)|0);}
+  const b=enc8(str),l=b.length,n=((l+9+63)>>6)<<6,m=new Uint8Array(n);m.set(b);m[l]=0x80;
+  const dv=new DataView(m.buffer);dv.setUint32(n-4,l*8>>>0);dv.setUint32(n-8,Math.floor(l*8/4294967296));
+  const w=new Int32Array(64),r=(x,k)=>(x>>>k)|(x<<(32-k));
+  for(let o=0;o<n;o+=64){
+    for(let i=0;i<16;i++)w[i]=dv.getInt32(o+i*4);
+    for(let i=16;i<64;i++){const a=w[i-15],c=w[i-2];w[i]=(w[i-16]+(r(a,7)^r(a,18)^(a>>>3))+w[i-7]+(r(c,17)^r(c,19)^(c>>>10)))|0;}
+    let [a,bb,c,d,e,f,g,hh]=H;
+    for(let i=0;i<64;i++){
+      const t1=(hh+(r(e,6)^r(e,11)^r(e,25))+((e&f)^(~e&g))+K[i]+w[i])|0,t2=((r(a,2)^r(a,13)^r(a,22))+((a&bb)^(a&c)^(bb&c)))|0;
+      hh=g;g=f;f=e;e=(d+t1)|0;d=c;c=bb;bb=a;a=(t1+t2)|0;
+    }
+    H=[H[0]+a|0,H[1]+bb|0,H[2]+c|0,H[3]+d|0,H[4]+e|0,H[5]+f|0,H[6]+g|0,H[7]+hh|0];
+  }
+  return H.map(x=>(x>>>0).toString(16).padStart(8,'0')).join('');
+}
+async function deriveHash(pw,salt,kdf){
+  if(kdf==='pbkdf2'){
+    if(!(window.crypto&&crypto.subtle))throw new Error('این گذرواژه با روش امن مرورگر ساخته شده و روی این آدرس (غیر https) قابل بررسی نیست.');
+    const k=await crypto.subtle.importKey('raw',enc8(pw),'PBKDF2',false,['deriveBits']);
+    return toB64(new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:Uint8Array.from(atob(salt),c=>c.charCodeAt(0)),hash:'SHA-256',iterations:150000},k,256)));
+  }
+  let x=sha256hex(salt+pw);for(let i=0;i<20000;i++)x=sha256hex(x+salt+pw);return x;
+}
+async function makeCred(pw){
+  const salt=toB64(crypto.getRandomValues(new Uint8Array(16)));
+  const kdf=window.crypto&&crypto.subtle?'pbkdf2':'js';
+  return {salt,kdf,hash:await deriveHash(pw,salt,kdf)};
+}
+const authOn=()=>!!DB.get('auth',{}).on;
+const SKEY='fb.session';
+function getSession(){
+  for(const st of [sessionStorage,localStorage]){try{const v=JSON.parse(st.getItem(SKEY));if(v&&v.id&&(!v.exp||v.exp>Date.now()))return v;}catch{}}
+  return null;
+}
+function setSession(id,remember){
+  clearSession();
+  try{(remember?localStorage:sessionStorage).setItem(SKEY,JSON.stringify({id,exp:remember?Date.now()+30*864e5:0}));}catch{}
+}
+function clearSession(){try{sessionStorage.removeItem(SKEY);localStorage.removeItem(SKEY);}catch{}}
+function currentUser(){
+  if(!authOn())return null;
+  const ses=getSession();if(!ses)return null;
+  const u=DB.get('users',[]).find(x=>x.id===ses.id);
+  return u&&u.active!==false&&u.hash?u:null;
+}
+const permsOf=u=>{const r=u&&DB.get('roles',[]).find(x=>x.name===u.role);return r?r.perms||[]:[];};
+const can=(...ps)=>!authOn()||(()=>{const mine=permsOf(currentUser());return ps.some(p=>mine.includes(p));})();
+const ROUTE_PERM={forms:['forms','records'],builder:['forms'],fill:['records'],records:['records'],reports:['reports'],users:['users'],process:['process'],messenger:['settings'],bale:['settings'],telegram:['settings'],backup:['settings'],update:['settings'],settings:['settings']};
+const allowedRoute=a=>{const need=ROUTE_PERM[a||''];return !need||can(...need);};
+// دست‌کم یک کاربر فعال دارای گذرواژه و نقشی با دسترسی «کاربران» باید بماند
+const adminOk=(users,roles)=>users.some(u=>u.active!==false&&u.hash&&((roles.find(r=>r.name===u.role)||{}).perms||[]).includes('users'));
+const failState=()=>{try{return JSON.parse(localStorage.getItem('fb.authfail'))||{n:0,until:0};}catch{return {n:0,until:0};}};
+function logout(){clearSession();buildDrawer();route();}
+function viewLogin(){
+  document.body.classList.add('locked');
+  const err=h('div',{class:'err'});
+  const un=h('input',{type:'text',autocomplete:'username',dir:'ltr',autofocus:true}),pw=h('input',{type:'password',autocomplete:'current-password',dir:'ltr'});
+  const rem=h('input',{type:'checkbox'});
+  const btn=h('button',{type:'button',class:'btn primary',onclick:go},'ورود');
+  async function go(){
+    const fs=failState();
+    if(fs.until>Date.now()){err.textContent=`تلاش‌های ناموفق زیاد بود؛ ${fa(Math.ceil((fs.until-Date.now())/1000))} ثانیه صبر کنید.`;return;}
+    btn.disabled=true;err.textContent='';
+    try{
+      const u=DB.get('users',[]).find(x=>x.username===un.value.trim());
+      let ok=false;
+      if(u&&u.active!==false&&u.hash)ok=(await deriveHash(pw.value,u.salt,u.kdf))===u.hash;
+      else await deriveHash(pw.value,'x','js'); // زمان پاسخ برای کاربر ناموجود هم مشابه بماند
+      if(!ok){
+        const n=fs.n+1;localStorage.setItem('fb.authfail',JSON.stringify({n,until:n>=5?Date.now()+30000*(n-4):0}));
+        err.textContent='نام کاربری یا گذرواژه درست نیست.';
+      }else{
+        localStorage.removeItem('fb.authfail');setSession(u.id,rem.checked);
+        document.body.classList.remove('locked');buildDrawer();
+        if(!location.hash||location.hash.startsWith('#/login'))location.hash='#/';route();
+      }
+    }catch(e){err.textContent=e.message;}
+    btn.disabled=false;
+  }
+  [un,pw].forEach(i=>i.addEventListener('keydown',e=>{if(e.key==='Enter')go();}));
+  const app=$('#app');app.innerHTML='';
+  app.append(h('div',{class:'login'},h('h1',{},appName()),h('p',{class:'muted'},'برای ادامه وارد شوید.'),
+    h('div',{class:'card'},
+      h('div',{class:'field'},h('div',{class:'lbl'},'نام کاربری'),un),
+      h('div',{class:'field'},h('div',{class:'lbl'},'گذرواژه'),pw),
+      h('label',{class:'chk'},rem,'مرا در این دستگاه به خاطر بسپار (۳۰ روز)'),err,
+      h('div',{class:'btn-row'},btn))));
+  setTimeout(()=>un.focus(),50);
+}
+const noAccess=()=>page({title:'دسترسی ندارید',back:'#/'},h('div',{class:'empty'},'نقش شما اجازهٔ دیدن این بخش را ندارد.'));
+
 const MENU=[
   ['home','خانه','layout-dashboard','#/'],
   ['forms','مدیریت فرم‌ها','file-text','#/forms'],
@@ -653,10 +757,13 @@ const MENU=[
 ];
 let drawerEl,backdropEl;
 function buildDrawer(){
+  if(drawerEl)drawerEl.remove();if(backdropEl)backdropEl.remove();
+  const cu=currentUser();
   backdropEl=h('div',{id:'backdrop',onclick:closeDrawer});
   drawerEl=h('nav',{id:'drawer','aria-label':'منوی اصلی'},
     h('div',{class:'dr-head'},h('b',{id:'dr-name'},appName()),h('span',{class:'muted sm'},'نسخه '+fa(APP_VERSION))),
-    h('div',{class:'dr-list'},MENU.map(m=>h('a',{href:m[3],'data-id':m[0],class:'dr-item',onclick:closeDrawer},h('span',{class:'dr-ic'},ic(m[2])),m[1]))));
+    h('div',{class:'dr-list'},MENU.filter(m=>allowedRoute(m[0])).map(m=>h('a',{href:m[3],'data-id':m[0],class:'dr-item',onclick:closeDrawer},h('span',{class:'dr-ic'},ic(m[2])),m[1]))),
+    cu?h('div',{class:'dr-foot'},h('div',{class:'who'},h('b',{},cu.name),h('span',{class:'muted sm'},cu.role)),h('button',{class:'btn',onclick:()=>{if(confirm('از حساب خارج شوید؟'))logout();}},'خروج')):null);
   document.body.append(backdropEl,drawerEl);
 }
 const openDrawer=()=>{drawerEl.classList.add('open');backdropEl.classList.add('show');};
@@ -730,7 +837,7 @@ function viewHome(){
   };
   const latest=forms.flatMap(f=>(recs[f.id]||[]).map(r=>({f,r}))).sort((a,b)=>b.r.createdAt-a.r.createdAt).slice(0,5);
   page({title:appName()},
-    h('div',{class:'tiles'},MENU.slice(1).map(m=>h('a',{class:'tile',href:m[3]},h('b',{class:'tile-t'},ic(m[2]),m[1]),h('span',{class:'muted sm'},info[m[0]]||'')))),
+    h('div',{class:'tiles'},MENU.slice(1).filter(m=>allowedRoute(m[0])).map(m=>h('a',{class:'tile',href:m[3]},h('b',{class:'tile-t'},ic(m[2]),m[1]),h('span',{class:'muted sm'},info[m[0]]||'')))),
     h('h3',{},'آخرین رکوردها'),
     latest.length?latest.map(x=>h('a',{class:'card',style:'display:block',href:`#/records/${x.f.id}`},h('b',{},x.f.title),' ',h('span',{class:'muted sm'},fmtDT(x.r.createdAt)),h('p',{class:'sm muted'},summarize(x.f,x.r.data)||'—'))):h('div',{class:'empty sm'},'هنوز رکوردی ثبت نشده است.'));
 }
@@ -742,13 +849,13 @@ function viewForms(){
     h('div',{class:'card-top'},h('div',{},h('h2',{},f.title),f.description?h('p',{class:'muted sm'},f.description):null),h('span',{class:'badge'},`${fa(f.fields.length)} فیلد`)),
     h('div',{class:'muted sm'},`${fa((recs[f.id]||[]).length)} رکورد ثبت‌شده`),
     h('div',{class:'btn-row'},
-      h('a',{class:'btn primary',href:`#/fill/${f.id}`},'ثبت رکورد'),
-      h('a',{class:'btn',href:`#/records/${f.id}`},'رکوردها'),
-      h('a',{class:'btn',href:`#/builder/${f.id}`},'ویرایش فرم'),
-      h('button',{class:'btn',onclick:()=>openSendDialog(f)},'ارسال به تلگرام'),
-      h('button',{class:'btn danger',onclick:()=>delForm(f)},'حذف'))))
+      can('records')?h('a',{class:'btn primary',href:`#/fill/${f.id}`},'ثبت رکورد'):null,
+      can('records')?h('a',{class:'btn',href:`#/records/${f.id}`},'رکوردها'):null,
+      can('forms')?h('a',{class:'btn',href:`#/builder/${f.id}`},'ویرایش فرم'):null,
+      can('forms')?h('button',{class:'btn',onclick:()=>openSendDialog(f)},'ارسال به تلگرام'):null,
+      can('forms')?h('button',{class:'btn danger',onclick:()=>delForm(f)},'حذف'):null)))
     :h('div',{class:'empty'},h('p',{},'هنوز فرمی نساخته‌اید.'),h('p',{},'با دکمهٔ «فرم جدید» شروع کنید.'));
-  page({title:'مدیریت فرم‌ها'},list,h('a',{class:'fab',href:'#/builder/new'},'＋ فرم جدید'));
+  page({title:'مدیریت فرم‌ها'},list,can('forms')?h('a',{class:'fab',href:'#/builder/new'},'＋ فرم جدید'):null);
 }
 function delForm(f){
   const users=Store.forms.filter(g=>g.id!==f.id&&g.fields.some(x=>x.type==='subform'&&x.subformId===f.id));
@@ -850,25 +957,80 @@ function viewReports(){
 }
 
 /* ---- users & roles ---- */
-function userSchema(){return {id:'__user',title:'کاربر',fields:[
+function userSchema(isNew){return {id:'__user',title:'کاربر',fields:[
   F('name','نام و نام خانوادگی','text',{required:true}),F('username','نام کاربری','text',{required:true}),
   F('phone','موبایل','tel'),F('role','نقش','select',{required:true,options:DB.get('roles',[]).map(r=>r.name)}),
+  F('password',authOn()?'گذرواژه':'گذرواژه (برای ورود به سیستم)','password',{required:authOn()&&!!isNew,help:'هنگام ویرایش، فقط برای تغییر گذرواژه پر کنید. حداقل ۶ نویسه.'}),
   F('active','فعال','boolean'),F('bale','شناسهٔ چت بله','text'),F('tg','شناسهٔ چت تلگرام','text')]};}
 function roleSchema(){return {id:'__role',title:'نقش',fields:[
   F('name','نام نقش','text',{required:true}),F('perms','دسترسی‌ها','checkboxes',{options:PERMS.map(p=>p[1])})]};}
+
+function authCard(){
+  const on=authOn(),cu=currentUser();
+  const body=on
+    ?h('div',{},h('p',{},`ورود به سیستم فعال است. کاربر فعلی: ${cu?cu.name:'—'}`),
+      h('div',{class:'btn-row'},h('button',{class:'btn danger',onclick:()=>{
+        if(!confirm('ورود به سیستم غیرفعال شود؟ همه بدون گذرواژه به برنامه دسترسی کامل خواهند داشت.'))return;
+        DB.set('auth',{on:false});clearSession();document.body.classList.remove('locked');buildDrawer();route();toast('ورود به سیستم غیرفعال شد');}},'غیرفعال‌سازی ورود')))
+    :h('div',{},h('p',{},'ورود به سیستم خاموش است و همه به همهٔ بخش‌ها دسترسی دارند. با فعال‌سازی، ابتدا یک مدیر با گذرواژه ساخته می‌شود و هر کاربر فقط بخش‌های مجاز نقشش را می‌بیند.'),
+      h('div',{class:'btn-row'},h('button',{class:'btn primary',onclick:enableAuth},'فعال‌سازی ورود به سیستم')));
+  return h('div',{class:'card',style:'margin-bottom:12px'},h('h2',{},'ورود به سیستم'),body,
+    h('div',{class:'muted sm'},'توجه: داده‌ها در مرورگر همین دستگاه ذخیره می‌شوند؛ این قفل جلوی استفادهٔ عادی دیگران را می‌گیرد ولی جایگزین امنیت سرور نیست. در صورت فراموشی گذرواژهٔ همهٔ مدیران، فقط با پاک کردن دادهٔ برنامه یا بازیابی پشتیبان می‌توان وارد شد.'));
+}
+function enableAuth(){
+  const roles=DB.get('roles',[]);
+  const schema={id:'__adm',title:'مدیر',fields:[
+    F('name','نام مدیر','text',{required:true}),F('username','نام کاربری','text',{required:true}),
+    F('password','گذرواژه (حداقل ۶ نویسه)','password',{required:true}),F('password2','تکرار گذرواژه','password',{required:true})]};
+  editEntity(schema,{},'ساخت مدیر و فعال‌سازی ورود',d=>{
+    if(d.password.length<6){toast('گذرواژه حداقل ۶ نویسه باشد');return false;}
+    if(d.password!==d.password2){toast('تکرار گذرواژه مطابقت ندارد');return false;}
+    (async()=>{
+      let rs=DB.get('roles',[]);
+      let role=rs.find(r=>(r.perms||[]).includes('users'));
+      if(!role){role={id:uid(),name:'مدیر کل',perms:PERMS.map(p=>p[0])};rs.push(role);DB.set('roles',rs);}
+      const cred=await makeCred(d.password);
+      const us=DB.get('users',[]);
+      const ex=us.find(u=>u.username===d.username);
+      const user={...(ex||{id:uid(),phone:''}),name:d.name,username:d.username,role:role.name,active:true,...cred};
+      upsert('users',user);
+      DB.set('auth',{on:true});setSession(user.id,false);
+      buildDrawer();toast('ورود به سیستم فعال شد');route();
+    })();
+  });
+}
 function viewUsers(tab){
   seed();tab=tab==='roles'?'roles':'users';
   const tabs=h('div',{class:'btn-row',style:'margin:0 0 12px'},
     h('a',{class:'btn'+(tab==='users'?' primary':''),href:'#/users'},'کاربران'),
     h('a',{class:'btn'+(tab==='roles'?' primary':''),href:'#/users/roles'},'نقش‌ها'));
-  const note=h('div',{class:'note',style:'margin-bottom:12px'},'فعلاً فقط تعریف کاربران و نقش‌ها انجام می‌شود؛ ورود به سیستم و اعمال دسترسی‌ها در مرحلهٔ بعد اضافه می‌شود.');
+  const note=authCard();
   if(tab==='users'){
     const us=DB.get('users',[]);
-    const open=u=>editEntity(userSchema(),u||{active:true},u?'ویرایش کاربر':'کاربر جدید',d=>{
-      if(DB.get('users',[]).some(x=>x.username===d.username&&x.id!==u?.id)){toast('این نام کاربری تکراری است');return false;}
-      upsert('users',{...(u||{}),...d,id:u?.id||uid()});viewUsers('users');});
+    const open=u=>editEntity(userSchema(!u),{...(u||{active:true}),password:''},u?'ویرایش کاربر':'کاربر جدید',d=>{
+      const all=DB.get('users',[]);
+      if(all.some(x=>x.username===d.username&&x.id!==u?.id)){toast('این نام کاربری تکراری است');return false;}
+      if(d.password&&d.password.length<6){toast('گذرواژه حداقل ۶ نویسه باشد');return false;}
+      const {password,...rest}=d;
+      const next={...(u||{}),...rest,id:u?.id||uid()};
+      if(authOn()){
+        const hasPw=!!(next.hash||password);
+        if(!hasPw){toast('برای ورود به سیستم گذرواژه لازم است');return false;}
+        const others=all.filter(x=>x.id!==next.id);
+        if(!adminOk([...others,{...next,hash:next.hash||'x'}],DB.get('roles',[]))){toast('دست‌کم یک کاربر فعال با دسترسی «مدیریت کاربران» باید بماند');return false;}
+      }
+      (async()=>{
+        if(password)Object.assign(next,await makeCred(password));
+        upsert('users',next);
+        const cu=currentUser();if(authOn()&&!cu){clearSession();}
+        buildDrawer();viewUsers('users');
+      })();
+    });
     page({title:'کاربران و نقش‌ها'},tabs,note,
-      us.length?us.map(u=>entityCard(u.name,`@${u.username}${u.phone?' · '+fa(u.phone):''}`,{badge:u.active?u.role:'غیرفعال',onEdit:()=>open(u),onDelete:()=>{if(confirm('کاربر حذف شود؟')){removeFrom('users',u.id);viewUsers('users');}}}))
+      us.length?us.map(u=>entityCard(u.name,`@${u.username}${u.phone?' · '+fa(u.phone):''}${authOn()&&!u.hash?' · بدون گذرواژه (نمی‌تواند وارد شود)':''}`,{badge:u.active?u.role:'غیرفعال',onEdit:()=>open(u),onDelete:()=>{
+          if(authOn()){const cu=currentUser();if(cu&&cu.id===u.id){alert('حساب خودتان را نمی‌توانید حذف کنید.');return;}
+            if(!adminOk(DB.get('users',[]).filter(x=>x.id!==u.id),DB.get('roles',[]))){alert('دست‌کم یک مدیر باید باقی بماند.');return;}}
+          if(confirm('کاربر حذف شود؟')){removeFrom('users',u.id);viewUsers('users');}}}))
         :h('div',{class:'empty'},'هنوز کاربری تعریف نشده است.'),
       fab('＋ کاربر جدید',()=>open(null)));
   }else{
@@ -877,8 +1039,13 @@ function viewUsers(tab){
     const open=r=>editEntity(roleSchema(),r?{name:r.name,perms:toLabels(r.perms)}:{perms:[]},r?'ویرایش نقش':'نقش جدید',d=>{
       const perms=PERMS.filter(p=>d.perms.includes(p[1])).map(p=>p[0]);
       if(DB.get('roles',[]).some(x=>x.name===d.name&&x.id!==r?.id)){toast('این نام تکراری است');return false;}
+      if(authOn()){
+        const nr=DB.get('roles',[]).map(x=>x.id===r?.id?{...x,name:d.name,perms}:x);
+        const nu=DB.get('users',[]).map(u=>r&&u.role===r.name?{...u,role:d.name}:u);
+        if(!adminOk(nu,nr)){toast('با این تغییر هیچ مدیری باقی نمی‌ماند');return false;}
+      }
       if(r&&r.name!==d.name)DB.set('users',DB.get('users',[]).map(u=>u.role===r.name?{...u,role:d.name}:u));
-      upsert('roles',{id:r?.id||uid(),name:d.name,perms});viewUsers('roles');});
+      upsert('roles',{id:r?.id||uid(),name:d.name,perms});if(authOn()&&!currentUser())clearSession();buildDrawer();viewUsers('roles');});
     page({title:'کاربران و نقش‌ها'},tabs,note,
       rs.map(r=>entityCard(r.name,toLabels(r.perms).join('، ')||'بدون دسترسی',{badge:`${fa(DB.get('users',[]).filter(u=>u.role===r.name).length)} کاربر`,onEdit:()=>open(r),onDelete:()=>{
         if(DB.get('users',[]).some(u=>u.role===r.name)){alert('این نقش به کاربرانی داده شده و حذف نمی‌شود.');return;}
@@ -1949,7 +2116,10 @@ document.addEventListener('visibilitychange',()=>{if(!IS_MINI&&document.visibili
 /* router */
 function route(){
   seed();
+  if(authOn()&&!currentUser()){viewLogin();return;}
+  document.body.classList.remove('locked');
   const [,a,b]=(location.hash||'#/').split('/');
+  if(!allowedRoute(a)){closeDrawer();markActive('home');noAccess();return;}
   const c=(location.hash||'#/').split('/')[3];
   closeDrawer();
   markActive(({'':'home',builder:'forms',fill:'forms',records:'forms'})[a]??a);
