@@ -516,9 +516,17 @@ async function storeFile(f,file){
   return {id:uid(),name,type,size:blob.size,tgOnly:true,tg:{file_id:fid,thumb}};
 }
 async function tgDownload(fileId){
+  const rl=relayCfg();
+  if(rl){ // از طریق Cloudflare Worker (نیازمند BOT_TOKEN روی Worker)
+    const res=await fetch(rl.url+'/file?file_id='+encodeURIComponent(fileId),{headers:{authorization:'Bearer '+rl.key}});
+    if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error('واسط: '+(j.error||('HTTP '+res.status)));}
+    return res.blob();
+  }
   const c=DB.get('telegram',{}),base=(c.baseUrl||PLATFORMS.telegram.base).replace(/\/+$/,'');
   const info=await tg('getFile',{file_id:fileId});
-  const res=await fetch(`${base}/file/bot${c.token}/${info.file_path}`);
+  let res;
+  try{res=await fetch(`${base}/file/bot${c.token}/${info.file_path}`);}
+  catch{throw new Error('مرورگر دانلود مستقیم فایل از تلگرام را مسدود می‌کند (CORS). برای دانلود، «واسط Cloudflare Worker» را با BOT_TOKEN در تنظیمات تلگرام فعال کنید.');}
   if(!res.ok)throw new Error('HTTP '+res.status);
   return res.blob();
 }

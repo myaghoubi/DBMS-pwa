@@ -46,6 +46,18 @@ export default {
       return json({ ok: true, result: out });
     }
 
+    // دانلود فایل تلگرام برای برنامه (مرورگر اجازهٔ دانلود مستقیم از تلگرام را نمی‌دهد)؛ نیازمند BOT_TOKEN
+    if (url.pathname === '/file' && req.method === 'GET') {
+      if (!env.BOT_TOKEN) return json({ ok: false, error: 'BOT_TOKEN روی Worker تنظیم نشده است' }, 501);
+      const id = url.searchParams.get('file_id');
+      if (!id) return json({ ok: false, error: 'file_id لازم است' }, 400);
+      const info = await (await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getFile?file_id=${encodeURIComponent(id)}`)).json().catch(() => ({}));
+      if (!info.ok || !info.result || !info.result.file_path) return json({ ok: false, error: info.description || 'فایل پیدا نشد' }, 404);
+      const f = await fetch(`https://api.telegram.org/file/bot${env.BOT_TOKEN}/${info.result.file_path}`);
+      if (!f.ok) return json({ ok: false, error: 'دانلود از تلگرام ناموفق بود (' + f.status + ')' }, 502);
+      return new Response(f.body, { status: 200, headers: { 'content-type': f.headers.get('content-type') || 'application/octet-stream', ...cors } });
+    }
+
     if (url.pathname === '/ack' && req.method === 'POST') {
       const upto = Number(url.searchParams.get('upto'));
       if (!Number.isFinite(upto)) return json({ ok: false, error: 'upto نامعتبر' }, 400);

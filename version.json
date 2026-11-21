@@ -1,7 +1,14 @@
 {
-  "version": "0.13.0",
+  "version": "0.13.1",
   "date": "1405/08/30",
   "changelog": [
+    {
+      "version": "0.13.1",
+      "date": "1405/08/30",
+      "notes": [
+        "دانلود فایل‌های تلگرام از طریق مسیر /file در Cloudflare Worker (رفع Failed to fetch به‌خاطر CORS) و پیام خطای راهنما"
+      ]
+    },
     {
       "version": "0.13.0",
       "date": "1405/08/30",
