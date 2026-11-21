@@ -190,8 +190,13 @@ html body.locked #app{margin-right:0!important}
 .dr-foot{border-top:1px solid var(--line);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px}
 .dr-foot .who{display:flex;flex-direction:column;min-width:0}.dr-foot .who span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filebox .flist{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}.frow{display:flex;align-items:center;gap:8px;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:6px 8px}
-.fchip{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}.fthumb{width:44px;height:44px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--line)}
-.fchip .btn.sm{padding:3px 10px;font-size:13px}
+.fitem{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.ftile{width:56px;height:56px;flex:none;border-radius:10px;border:1px solid var(--line);background:var(--bg) center/cover no-repeat;cursor:pointer;display:grid;place-items:center;overflow:hidden}
+.ftile.ph{cursor:default}
+.fmeta{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}.fname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:right}
+.fsub{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;color:var(--muted,#666)}
+.fkind{display:inline-flex;vertical-align:middle}.fk-image{color:#0ea5e9}.fk-text{color:#ef4444}.fk-sheet{color:#16a34a}.fk-archive{color:#d97706}.fk-audio{color:#a855f7}.fk-video{color:#ec4899}.fk-file{color:#64748b}
+.facts{display:flex;gap:6px;flex-wrap:wrap}.facts .btn.sm{padding:3px 10px;font-size:13px;display:inline-flex;align-items:center;gap:4px;text-decoration:none}
 </style>
 </head>
 <body>
@@ -383,8 +388,9 @@ function summarize(form,data){
   const parts=[];
   for(const f of form.fields){
     if(['subform','color','rating','boolean','range'].includes(f.type))continue;
-    const t=plain(f,data?.[f.id]);
-    if(t)parts.push(['email','url','text','textarea','select','radio','checkboxes'].includes(f.type)?t:fa(t));
+    const fv=data?.[f.id];
+    const t=f.type==='file'?(Array.isArray(fv)&&fv.length?fa(fv.length)+' فایل':''):plain(f,fv);
+    if(t)parts.push(['email','url','text','textarea','select','radio','checkboxes','file'].includes(f.type)?t:fa(t));
     if(parts.length>=3)break;
   }
   return parts.map(p=>'⁨'+p+'⁩').join(' · ');
@@ -506,7 +512,8 @@ async function storeFile(f,file){
   const isImg=/^image\/(jpeg|png|webp)$/.test(type)&&blob.size<10*1048576;
   const msg=await tgUpload(isImg?'sendPhoto':'sendDocument',{chat_id:c.chatId,caption:`📎 ${f.label}`},{[isImg?'photo':'document']:blob},{[isImg?'photo':'document']:name});
   const fid=isImg?msg.photo[msg.photo.length-1].file_id:msg.document.file_id;
-  return {id:uid(),name,type,size:blob.size,tgOnly:true,tg:{file_id:fid}};
+  const thumb=isImg?(msg.photo.length>1?msg.photo[0].file_id:''):((msg.document.thumbnail||msg.document.thumb||{}).file_id||'');
+  return {id:uid(),name,type,size:blob.size,tgOnly:true,tg:{file_id:fid,thumb}};
 }
 async function tgDownload(fileId){
   const c=DB.get('telegram',{}),base=(c.baseUrl||PLATFORMS.telegram.base).replace(/\/+$/,'');
@@ -515,39 +522,76 @@ async function tgDownload(fileId){
   if(!res.ok)throw new Error('HTTP '+res.status);
   return res.blob();
 }
+const INL={
+  file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  text:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  image:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><circle cx="10" cy="12" r="2"/><path d="m20 17-1.3-1.3a2.4 2.4 0 0 0-3.4 0L9 22"/>',
+  sheet:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/>',
+  archive:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 6v1"/><path d="M10 10v1"/><path d="M10 14v1"/><path d="M10 18v1"/>',
+  audio:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 17v-6l5-1v6"/><circle cx="8.5" cy="17" r="1.5"/><circle cx="13.5" cy="16" r="1.5"/>',
+  video:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 11 5 3-5 3Z"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+  refresh:'<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>'
+};
+// آیکون‌ها داخل خود برنامه‌اند (به icons.js و کش آن وابسته نیستند)
+const inl=(k,size=16)=>{const v=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  [['width',size],['height',size],['viewBox','0 0 24 24'],['fill','none'],['stroke','currentColor'],['stroke-width',2],['stroke-linecap','round'],['stroke-linejoin','round']].forEach(([a,b])=>v.setAttribute(a,b));
+  v.innerHTML=INL[k]||INL.file;return v;};
+function fileKind2(m){
+  const t=(m.type||'').toLowerCase(),e=((m.name||'').split('.').pop()||'').toLowerCase();
+  if(t.startsWith('image/'))return 'image';
+  if(t.startsWith('audio/'))return 'audio';
+  if(t.startsWith('video/'))return 'video';
+  if(/^(xls|xlsx|csv|ods|tsv)$/.test(e)||/spreadsheet|excel|csv/.test(t))return 'sheet';
+  if(/^(zip|rar|7z|gz|tar|tgz|bz2)$/.test(e)||/zip|compressed|tar|rar/.test(t))return 'archive';
+  if(/^(pdf|doc|docx|txt|md|rtf|odt|ppt|pptx)$/.test(e)||/pdf|text|word|document|presentation/.test(t))return 'text';
+  return 'file';
+}
+const thumbCache=new Map();
+const tgThumbUrl=id=>{if(!thumbCache.has(id))thumbCache.set(id,tgDownload(id).then(b=>URL.createObjectURL(b)));return thumbCache.get(id);};
+const saveBlobAs=(blob,name)=>{const u=URL.createObjectURL(blob),a=h('a',{href:u,download:name});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),6e4);};
 function fileNode(m){
-  const box=h('span',{class:'fchip'}),label=h('span',{},`${m.name} (${fmtSize(m.size||0)})`);
-  box.append(label);
-  if(m.tgOnly){ // فایل فقط در تلگرام است؛ هنگام نمایش، در دسترس بودنش بررسی می‌شود
-    const st=h('span',{class:'muted sm'},'در تلگرام · در حال بررسی…');
+  const kind=fileKind2(m),isImg=kind==='image';
+  const tile=h('div',{class:'ftile ph'});
+  const st=h('span',{});
+  const acts=h('div',{class:'facts'});
+  const root=h('div',{class:'fitem'},
+    isImg?tile:null,
+    h('div',{class:'fmeta'},h('span',{class:'fname',title:m.name},m.name),
+      h('span',{class:'fsub'},h('span',{class:'fkind fk-'+kind},inl(kind,16)),h('span',{},fmtSize(m.size||0)),st)),
+    acts);
+  const setTile=url=>{tile.classList.remove('ph');tile.style.backgroundImage=`url("${url}")`;tile.onclick=()=>window.open(url,'_blank');};
+  const dlBtn=fn=>h('button',{type:'button',class:'btn sm',onclick:async e=>{const b=e.currentTarget;b.disabled=true;try{await fn();}catch(er){toast('دانلود ممکن نشد: '+er.message);}b.disabled=false;}},inl('download',14),'دریافت');
+  if(m.tgOnly){
+    st.textContent='· در تلگرام · در حال بررسی…';
     const chk=async()=>{
-      st.textContent='در تلگرام · در حال بررسی…';
-      try{const i=await tg('getFile',{file_id:m.tg.file_id});st.textContent=i&&i.file_path?'در تلگرام · ✓ قابل دانلود':'در تلگرام · ✓ موجود (دانلود ربات ممکن نیست)';}
-      catch(e){st.textContent='در تلگرام · ✗ در دسترس نیست';}
+      st.textContent='· در تلگرام · در حال بررسی…';
+      try{const i=await tg('getFile',{file_id:m.tg.file_id});st.textContent=i&&i.file_path?'· ✓ در تلگرام قابل دانلود':'· ✓ در تلگرام (دانلود ربات ممکن نیست)';}
+      catch{st.textContent='· ✗ در تلگرام در دسترس نیست';}
     };
-    const dl=h('button',{type:'button',class:'btn sm',onclick:async e=>{
-      e.target.disabled=true;
-      try{const blob=await tgDownload(m.tg.file_id),u=URL.createObjectURL(blob),a=h('a',{href:u,download:m.name});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),6e4);}
-      catch(er){toast('دانلود ممکن نشد: '+er.message);}
-      e.target.disabled=false;}},'دریافت');
-    box.append(st,dl,h('button',{type:'button',class:'btn sm',onclick:chk},'بررسی'));
-    if(DB.get('telegram',{}).token&&navigator.onLine!==false)chk();else st.textContent='در تلگرام · بررسی نشد';
-    return box;
+    acts.append(dlBtn(async()=>saveBlobAs(await tgDownload(m.tg.file_id),m.name)),h('button',{type:'button',class:'btn sm',onclick:chk},inl('refresh',14),'بررسی'));
+    if(DB.get('telegram',{}).token&&navigator.onLine!==false){
+      chk();
+      if(isImg&&m.tg.thumb)tgThumbUrl(m.tg.thumb).then(setTile).catch(()=>{});
+    }else st.textContent='· در تلگرام · بررسی نشد';
+    return root;
   }
   FS.get(m.id).then(r=>{
     if(r&&r.blob){
       const url=URL.createObjectURL(r.blob);
-      if(/^image\//.test(m.type))box.prepend(h('img',{src:url,alt:'',class:'fthumb',onclick:()=>window.open(url,'_blank')}));
-      box.append(h('a',{href:url,download:m.name,class:'btn sm'},'دریافت'));
+      if(isImg)setTile(url);
+      acts.append(h('a',{href:url,download:m.name,class:'btn sm'},inl('download',14),'دریافت'));
     }else if(m.tg){
-      box.append(h('button',{type:'button',class:'btn sm',onclick:async e=>{
-        e.target.disabled=true;
-        try{const blob=await tgDownload(m.tg.file_id);await FS.put({id:m.id,name:m.name,type:m.type,size:blob.size,blob});box.replaceWith(fileNode(m));}
-        catch(er){e.target.disabled=false;toast('دریافت از تلگرام ممکن نشد: '+er.message);}
-      }},'دریافت از تلگرام'));
-    }
+      st.textContent='· هنوز از تلگرام گرفته نشده';
+      acts.append(h('button',{type:'button',class:'btn sm',onclick:async e=>{
+        const b=e.currentTarget;b.disabled=true;
+        try{const blob=await tgDownload(m.tg.file_id);await FS.put({id:m.id,name:m.name,type:m.type,size:blob.size,blob});root.replaceWith(fileNode(m));}
+        catch(er){b.disabled=false;toast('دریافت از تلگرام ممکن نشد: '+er.message);}
+      }},inl('download',14),'دریافت از تلگرام'));
+      if(isImg&&m.tg.thumb&&DB.get('telegram',{}).token)tgThumbUrl(m.tg.thumb).then(setTile).catch(()=>{});
+    }else st.textContent='· فایل در این دستگاه موجود نیست';
   }).catch(()=>{});
-  return box;
+  return root;
 }
 async function gcFiles(){
   try{
@@ -593,9 +637,9 @@ function buildControl(f,value,depth){
     case 'file':{
       if(f.deferred)return {el:h('div',{class:'note'},f.nested?'در حالت فرم داخل تلگرام، فایلِ داخل زیرفرم‌ها پشتیبانی نمی‌شود.':'فایل را بعد از ثبت فرم، ربات در همین گفتگو از شما می‌گیرد.'),get:()=>[],validate:()=>''};
       let items=Array.isArray(value)?[...value]:[];
-      const lim=f.multiple?(f.maxFiles||5):1;
+      const lim=f.maxFiles||10;
       const list=h('div',{class:'flist'}),msg=h('div',{class:'err'});
-      const input=h('input',{type:'file',hidden:true,...(f.multiple?{multiple:true}:{}),...(f.accept==='image'?{accept:'image/*'}:{})});
+      const input=h('input',{type:'file',hidden:true,multiple:true,...(f.accept==='image'?{accept:'image/*'}:{})});
       const addBtn=h('button',{type:'button',class:'btn',onclick:()=>input.click()});
       const draw=()=>{
         list.innerHTML='';
@@ -1550,7 +1594,7 @@ function viewBuilder(id){
     if(!draft.fields.length)listEl.append(h('div',{class:'empty sm'},'هنوز فیلدی اضافه نشده است.'));
     draft.fields.forEach((f,i)=>{
       const sub=f.type==='subform'?getForm(f.subformId):null;
-      const info=TYPES[f.type].label+(f.type==='imageradio'?` · ${fa((f.choices||[]).length)} گزینه`:'')+(f.type==='file'?(f.accept==='image'?' · فقط تصویر':'')+(f.multiple?' · چندتایی':'')+(f.storage==='telegram'?' · ذخیره در تلگرام':''):'')+(f.required?' · اجباری':'')+(f.type==='subform'?` · «${sub?sub.title:'؟'}» · ${f.mode==='inline'?'درون‌خط':'دیالوگ'} · ${f.multiple?'چندرکوردی':'تک‌رکوردی'}`:'');
+      const info=TYPES[f.type].label+(f.type==='imageradio'?` · ${fa((f.choices||[]).length)} گزینه`:'')+(f.type==='file'?(f.accept==='image'?' · فقط تصویر':'')+(f.storage==='telegram'?' · ذخیره در تلگرام':''):'')+(f.required?' · اجباری':'')+(f.type==='subform'?` · «${sub?sub.title:'؟'}» · ${f.mode==='inline'?'درون‌خط':'دیالوگ'} · ${f.multiple?'چندرکوردی':'تک‌رکوردی'}`:'');
       listEl.append(h('div',{class:'fcard'},
         h('div',{class:'fmain'},h('b',{},f.label),h('div',{class:'muted sm'},info)),
         h('div',{class:'fbtns'},
@@ -1623,8 +1667,7 @@ function openFieldEditor(draft,field,onSave){
     if(t==='rating')cfg.append(row('تعداد ستاره',numIn('max','5')));
     if(t==='file'){
       cfg.append(row('نوع فایل',h('select',{onchange:e=>{f.accept=e.target.value;}},h('option',{value:'any',selected:f.accept!=='image'},'هر فایل یا تصویر'),h('option',{value:'image',selected:f.accept==='image'},'فقط تصویر'))));
-      cfg.append(h('label',{class:'chk'},h('input',{type:'checkbox',checked:!!f.multiple,onchange:e=>{f.multiple=e.target.checked;drawCfg();}}),'امکان ارسال چند فایل'));
-      if(f.multiple)cfg.append(row('حداکثر تعداد فایل',numIn('maxFiles','5')));
+      cfg.append(row('حداکثر تعداد فایل (کاربر می‌تواند چند فایل بفرستد)',numIn('maxFiles','10')));
       cfg.append(row('حداکثر حجم هر فایل (مگابایت)',numIn('maxMB','10')));
       cfg.append(row('محل ذخیرهٔ فایل',h('select',{onchange:e=>{f.storage=e.target.value;drawCfg();}},
         h('option',{value:'local',selected:f.storage!=='telegram'},'داخل برنامه (روی همین دستگاه)'),
@@ -1945,7 +1988,7 @@ async function askField(chat,f,s){
     case 'color':text+='\n(کد رنگ، مثال: #ff8800)';break;
     case 'email':text+='\n(مثال: name@example.com)';break;
     case 'url':text+='\n(مثال: https://example.com)';break;
-    case 'file':text+=`\n(${f.accept==='image'?'تصویر':'فایل یا تصویر'} را بفرستید${f.multiple?'؛ چند مورد را یکی‌یکی بفرستید و «تمام» بزنید':''})`;break;
+    case 'file':text+=`\n(${f.accept==='image'?'تصویر':'فایل یا تصویر'} را بفرستید؛ چند مورد را یکی‌یکی بفرستید و «تمام» بزنید)`;break;
   }
   if(f.type==='imageradio')return askImageRadio(chat,f,s,text);
   if(!f.required)kb.push([tbtn('رد کردن','skip')]);
@@ -2085,8 +2128,8 @@ async function finish(chat,s){
 
 /* ---- فیلد فایل در تلگرام ---- */
 const fileKind=m=>{
-  const mk=(o,name,type)=>({id:o.file_id,size:o.file_size||0,name:o.file_name||name,type:o.mime_type||type});
-  if(m.photo&&m.photo.length)return mk(m.photo[m.photo.length-1],`photo-${m.message_id}.jpg`,'image/jpeg');
+  const mk=(o,name,type)=>({id:o.file_id,size:o.file_size||0,name:o.file_name||name,type:o.mime_type||type,thumb:((o.thumbnail||o.thumb||{}).file_id)||''});
+  if(m.photo&&m.photo.length)return {...mk(m.photo[m.photo.length-1],`photo-${m.message_id}.jpg`,'image/jpeg'),thumb:m.photo.length>1?m.photo[0].file_id:''};
   if(m.document)return mk(m.document,'file','application/octet-stream');
   if(m.video)return mk(m.video,`video-${m.message_id}.mp4`,'video/mp4');
   if(m.audio)return mk(m.audio,`audio-${m.message_id}.mp3`,'audio/mpeg');
@@ -2097,14 +2140,14 @@ async function acceptFile(f,m){
   const k=fileKind(m);if(!k)return {error:'لطفاً فایل یا تصویر بفرستید (نه متن).'};
   try{checkFile(f,k.name,k.type,k.size);}catch(e){return {error:e.message};}
   if(k.size>20*1048576)return {error:'تلگرام اجازهٔ دریافت فایل بیشتر از ۲۰ مگابایت را به ربات نمی‌دهد.'};
-  if(f.storage==='telegram')return {meta:{id:uid(),name:k.name,type:k.type,size:k.size,tgOnly:true,tg:{file_id:k.id}}};
+  if(f.storage==='telegram')return {meta:{id:uid(),name:k.name,type:k.type,size:k.size,tgOnly:true,tg:{file_id:k.id,thumb:k.thumb}}};
   try{return {meta:await putBlob(f,await tgDownload(k.id),k.name,k.type,false)};}
   catch(e){ // مثلاً CORS یا خطای شبکه: فقط شناسهٔ فایل در تلگرام ثبت می‌شود و بعداً می‌توان دریافتش کرد
     console.warn('tg file',e);
-    return {meta:{id:uid(),name:k.name,type:k.type,size:k.size,tg:{file_id:k.id}}};
+    return {meta:{id:uid(),name:k.name,type:k.type,size:k.size,tg:{file_id:k.id,thumb:k.thumb}}};
   }
 }
-const fileLim=f=>f.multiple?(f.maxFiles||5):1;
+const fileLim=f=>f.maxFiles||10;
 const moreKb=()=>[[tbtn('تمام ✔','fd')]];
 async function onFileMsg(chat,s,c,m){
   const f=c.f,r=await acceptFile(f,m);
@@ -2119,8 +2162,8 @@ async function askAttach(chat,s){
   const f=attachField(s);
   if(!f){Sess.set(chat,null);return tsend(chat,'✅ فایل‌ها هم ثبت شد. سپاس!\nبرای تکمیل فرم دیگر /forms را بزنید.');}
   s.attach.files=[];Sess.set(chat,s);
-  const kb=[];if(f.multiple)kb.push(...moreKb());if(!f.required)kb.push([tbtn('رد کردن','skip')]);
-  return tsend(chat,`📎 ${f.label}${f.required?' *':''}\n(${f.accept==='image'?'تصویر':'فایل یا تصویر'} را بفرستید${f.multiple?'؛ چند مورد را یکی‌یکی بفرستید و «تمام» بزنید':''})`,kb);
+  const kb=[...moreKb()];if(!f.required)kb.push([tbtn('رد کردن','skip')]);
+  return tsend(chat,`📎 ${f.label}${f.required?' *':''}\n(${f.accept==='image'?'تصویر':'فایل یا تصویر'} را بفرستید؛ چند مورد را یکی‌یکی بفرستید و «تمام» بزنید)`,kb);
 }
 async function attachSave(chat,s,files){
   const a=s.attach,f=attachField(s);
