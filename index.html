@@ -197,6 +197,13 @@ html body.locked #app{margin-right:0!important}
 .fsub{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;color:var(--muted,#666)}
 .fkind{display:inline-flex;vertical-align:middle}.fk-image{color:#0ea5e9}.fk-text{color:#ef4444}.fk-sheet{color:#16a34a}.fk-archive{color:#d97706}.fk-audio{color:#a855f7}.fk-video{color:#ec4899}.fk-file{color:#64748b}
 .facts{display:flex;gap:6px;flex-wrap:wrap}.facts .btn.sm{padding:3px 10px;font-size:13px;display:inline-flex;align-items:center;gap:4px;text-decoration:none}
+.bp-tools{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;margin-bottom:6px}.bp-tools .btn{white-space:nowrap;padding:6px 10px;font-size:13.5px}
+.bp-tools .btn.on{background:var(--pri);color:var(--pri-fg);border-color:var(--pri)}.bp-tools .btn:disabled{opacity:.45}
+.bpcanvas{direction:ltr;overflow:auto;height:58vh;min-height:320px;border:1px solid var(--line);border-radius:12px;background-color:var(--card);background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:20px 20px;margin-bottom:10px}
+.bpcanvas svg{display:block}.bpcanvas [data-nid]{touch-action:none;cursor:grab}.bpcanvas [data-eid]{cursor:pointer}.bpcanvas svg text{font-family:inherit;fill:var(--fg)}
+.bp-props,.bp-props+.card{margin-bottom:10px}.bp-props h3,.card h3{margin:0 0 8px;font-size:15px}
+.bp-prev{width:100%;height:120px;display:block}.bp-prevbox{display:block;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:6px;margin:8px 0}
+.bp-prev text{font-family:inherit;fill:var(--fg)}.ok{color:var(--ok)}
 </style>
 </head>
 <body>
@@ -942,7 +949,7 @@ const MENU=[
   ['forms','مدیریت فرم‌ها','file-text','#/forms'],
   ['reports','مدیریت گزارش‌ها و نمودارها','trending-up','#/reports'],
   ['users','کاربران و نقش‌ها','users','#/users'],
-  ['process','تعریف فرآیند','workflow','#/process'],
+  ['process','مدل‌های فرایند (BPMN)','workflow','#/process'],
   ['messenger','اتصال به پیام‌رسان','messages-square','#/messenger'],
   ['bale','تنظیمات بله','message-square','#/bale'],
   ['telegram','تنظیمات تلگرام','send','#/telegram'],
@@ -994,6 +1001,7 @@ function seed(){
     {id:uid(),name:'اپراتور',perms:['records','reports']},
     {id:uid(),name:'ناظر',perms:['reports']}]);
   migrateRoles();
+  migrateProcesses();
 }
 // کاربران چند نقش دارند؛ مشترکین پیام‌رسان هم نقش پیش‌فرض «مشترک پیام‌رسان» را می‌گیرند
 function migrateRoles(){
@@ -1039,7 +1047,7 @@ function viewHome(){
     forms:`${fa(forms.length)} فرم، ${fa(total)} رکورد`,
     reports:`${fa(DB.get('reports',[]).length)} گزارش ذخیره‌شده`,
     users:`${fa(DB.get('users',[]).length)} کاربر، ${fa(DB.get('roles',[]).length)} نقش`,
-    process:`${fa(DB.get('processes',[]).length)} فرآیند`,
+    process:`${fa(DB.get('processes',[]).length)} مدل`,
     messenger:`بله: ${st('bale')}، تلگرام: ${st('telegram')}`,
     bale:st('bale'),telegram:st('telegram'),
     backup:DB.get('meta',{}).lastBackup?'آخرین: '+fa(DB.get('meta',{}).lastBackup):'هنوز پشتیبان نگرفته‌اید',
@@ -1070,6 +1078,8 @@ function viewForms(){
 function delForm(f){
   const users=Store.forms.filter(g=>g.id!==f.id&&g.fields.some(x=>x.type==='subform'&&x.subformId===f.id));
   if(users.length){alert(`این فرم به‌عنوان زیرفرم در این فرم‌ها استفاده شده و حذف نمی‌شود:\n${users.map(u=>u.title).join('، ')}`);return;}
+  const pu=procUsedForm(f.id);
+  if(pu){alert(`این فرم در مدل فرایند «${pu.name}» به یک وظیفه وصل است و حذف نمی‌شود.`);return;}
   if(!confirm(`فرم «${f.title}» و همهٔ رکوردهایش حذف شود؟`))return;
   Store.forms=Store.forms.filter(x=>x.id!==f.id);
   const r=Store.records;delete r[f.id];Store.records=r;viewForms();
@@ -1175,7 +1185,7 @@ function userSchema(isNew){return {id:'__user',title:'کاربر',fields:[
 function roleSchema(){return {id:'__role',title:'نقش',fields:[
   F('name','نام نقش','text',{required:true}),F('perms','دسترسی‌ها','checkboxes',{options:PERMS.map(p=>p[1])})]};}
 
-const roleCount=n=>[...DB.get('users',[]),...DB.get('tgsubs',[])].filter(x=>(x.roles||[]).includes(n)).length;
+const roleCount=n=>[...DB.get('users',[]),...DB.get('tgsubs',[])].filter(x=>(x.roles||[]).includes(n)).length+DB.get('processes',[]).reduce((a,pr)=>a+(pr.nodes||[]).filter(x=>(x.roles||[]).includes(n)).length,0);
 function subsSection(){
   const subs=DB.get('tgsubs',[]);
   if(!subs.length)return h('div',{class:'empty sm'},'هنوز کسی عضو ربات نشده است.');
@@ -1268,6 +1278,7 @@ function viewUsers(tab){
         const rn=a=>(a||[]).map(n=>n===r.name?d.name:n);
         DB.set('users',DB.get('users',[]).map(u=>({...u,roles:rn(u.roles)})));
         DB.set('tgsubs',DB.get('tgsubs',[]).map(t=>({...t,roles:rn(t.roles)})));
+        DB.set('processes',DB.get('processes',[]).map(pr=>({...pr,nodes:(pr.nodes||[]).map(n=>n.roles?{...n,roles:rn(n.roles)}:n)})));
       }
       upsert('roles',{...(r||{}),id:r?.id||uid(),name:d.name,perms});if(authOn()&&!currentUser())clearSession();buildDrawer();viewUsers('roles');});
     page({title:'کاربران و نقش‌ها'},tabs,note,
@@ -1279,29 +1290,293 @@ function viewUsers(tab){
   }
 }
 
-/* ---- processes ---- */
-function procSchema(){
-  const roles=DB.get('roles',[]).map(r=>r.name),forms=Store.forms.map(f=>f.title);
-  VIRTUAL.__step={id:'__step',title:'مرحله',fields:[
-    F('title','عنوان مرحله','text',{required:true}),
-    F('role','نقش مسئول','select',{options:roles}),
-    F('action','نوع اقدام','select',{required:true,options:['ثبت اطلاعات','تأیید / رد','اطلاع‌رسانی']}),
-    F('form','فرم مرتبط (اختیاری)','select',{options:forms}),
-    F('notify','ارسال پیام در پیام‌رسان','boolean')]};
-  return {id:'__proc',title:'فرآیند',fields:[
-    F('name','نام فرآیند','text',{required:true}),F('description','توضیحات','textarea'),
-    F('trigger','شروع فرآیند','select',{required:true,options:['دستی','پس از ثبت رکورد']}),
-    F('steps','مراحل','subform',{subformId:'__step',mode:'inline',multiple:true,required:true})]};
+/* ---- مدل‌های فرایند (BPMN) ---- */
+const BP_TYPES={start:{label:'رویداد شروع'},end:{label:'رویداد پایان'},task:{label:'وظیفهٔ کاربر'},xor:{label:'دروازهٔ انحصاری (XOR)'},and:{label:'دروازهٔ موازی (AND)'}};
+const NODE_SIZE={start:{w:44,h:44},end:{w:44,h:44},task:{w:156,h:76},xor:{w:54,h:54},and:{w:54,h:54}};
+const SVGNS='http://www.w3.org/2000/svg';
+const sv=(tag,attrs={},...kids)=>{const e=document.createElementNS(SVGNS,tag);for(const k in attrs)if(attrs[k]!=null&&attrs[k]!==false)e.setAttribute(k,attrs[k]);kids.flat().forEach(c=>{if(c!=null)e.append(c.nodeType?c:document.createTextNode(c));});return e;};
+const nodeName=n=>`«${n.label||BP_TYPES[n.type].label}»`;
+const wrapText=(t,max=17)=>{const w=String(t||'').split(/\s+/).filter(Boolean),L=[''];w.forEach(x=>{const c=L[L.length-1];if(!c||(c+' '+x).length<=max)L[L.length-1]=c?c+' '+x:x;else L.push(x);});if(L.length>2){L.length=2;L[1]=L[1].slice(0,max-1)+'…';}return L.map(l=>l.length>max+2?l.slice(0,max)+'…':l);};
+function clipEdge(n,toward){
+  const {w,h}=NODE_SIZE[n.type],dx=toward.x-n.x,dy=toward.y-n.y;
+  if(!dx&&!dy)return {x:n.x,y:n.y};
+  if(n.type==='task'){const k=Math.min(w/2/(Math.abs(dx)||1e-9),h/2/(Math.abs(dy)||1e-9));return {x:n.x+dx*k,y:n.y+dy*k};}
+  if(n.type==='xor'||n.type==='and'){const k=1/(Math.abs(dx)/(w/2)+Math.abs(dy)/(h/2));return {x:n.x+dx*k,y:n.y+dy*k};}
+  const d=Math.hypot(dx,dy);return {x:n.x+dx/d*w/2,y:n.y+dy/d*w/2};
 }
+function edgeGeom(m,e){
+  const a=m.nodes.find(n=>n.id===e.from),b=m.nodes.find(n=>n.id===e.to);if(!a||!b)return null;
+  const p1=clipEdge(a,b),p2=clipEdge(b,a);
+  const rev=m.edges.some(x=>x.from===e.to&&x.to===e.from);
+  const dx=p2.x-p1.x,dy=p2.y-p1.y,len=Math.hypot(dx,dy)||1,off=rev?30:0;
+  const c={x:(p1.x+p2.x)/2-dy/len*off,y:(p1.y+p2.y)/2+dx/len*off};
+  return {p1,p2,c,mid:{x:(p1.x+p2.x)/4+c.x/2,y:(p1.y+p2.y)/4+c.y/2},path:`M${p1.x} ${p1.y} Q${c.x} ${c.y} ${p2.x} ${p2.y}`};
+}
+const taskIncomplete=n=>n.type==='task'&&(!n.formId||!Store.forms.some(f=>f.id===n.formId)||!(n.roles||[]).length);
+function graphBounds(m){let w=640,hh=380;m.nodes.forEach(n=>{const s=NODE_SIZE[n.type];w=Math.max(w,n.x+s.w/2+70);hh=Math.max(hh,n.y+s.h/2+70);});return {w,h:hh};}
+function drawGraph(svg,m,o={}){
+  const {sel,from,zoom=1,preview}=o;
+  svg.replaceChildren();
+  if(preview){
+    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;m.nodes.forEach(n=>{const s=NODE_SIZE[n.type];x0=Math.min(x0,n.x-s.w/2);y0=Math.min(y0,n.y-s.h/2);x1=Math.max(x1,n.x+s.w/2);y1=Math.max(y1,n.y+s.h/2+16);});
+    if(x0>x1){x0=0;y0=0;x1=200;y1=80;}
+    svg.setAttribute('viewBox',`${x0-14} ${y0-14} ${x1-x0+28} ${y1-y0+28}`);
+  }else{const B=graphBounds(m);svg.setAttribute('viewBox',`0 0 ${B.w} ${B.h}`);svg.setAttribute('width',B.w*zoom);svg.setAttribute('height',B.h*zoom);}
+  svg.append(sv('defs',{},sv('marker',{id:'bp-arrow',viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'8',markerHeight:'8',orient:'auto-start-reverse'},sv('path',{d:'M0 0L10 5L0 10z',style:'fill:var(--fg)'}))));
+  for(const e of m.edges){
+    const g=edgeGeom(m,e);if(!g)continue;
+    const isSel=sel&&sel.kind==='edge'&&sel.id===e.id;
+    svg.append(sv('g',{'data-eid':e.id},
+      sv('path',{d:g.path,fill:'none',style:`stroke:${isSel?'var(--pri)':'var(--fg)'};stroke-width:${isSel?3:1.6}`,'marker-end':'url(#bp-arrow)'}),
+      preview?null:sv('path',{d:g.path,fill:'none',stroke:'transparent','stroke-width':16}),
+      e.label?sv('text',{x:g.mid.x,y:g.mid.y-5,'text-anchor':'middle','font-size':12,style:'paint-order:stroke;stroke:var(--card);stroke-width:4px;direction:rtl'},e.label):null));
+  }
+  for(const n of m.nodes){
+    const s=NODE_SIZE[n.type],isSel=sel&&sel.kind==='node'&&sel.id===n.id,isFrom=from===n.id;
+    const bad=!preview&&taskIncomplete(n);
+    const stroke=isSel||isFrom?'var(--pri)':bad?'var(--danger)':n.type==='start'?'var(--ok)':n.type==='end'?'var(--danger)':'var(--fg)';
+    const sw=isSel||isFrom?3.2:n.type==='end'?4:2;
+    const sty=`fill:var(--card);stroke:${stroke};stroke-width:${sw}${bad?';stroke-dasharray:5 3':''}`;
+    const g=sv('g',{'data-nid':n.id});
+    if(n.type==='start'||n.type==='end')g.append(sv('circle',{cx:n.x,cy:n.y,r:s.w/2,style:sty}));
+    else if(n.type==='task')g.append(sv('rect',{x:n.x-s.w/2,y:n.y-s.h/2,width:s.w,height:s.h,rx:10,style:sty}));
+    else{
+      g.append(sv('polygon',{points:`${n.x},${n.y-s.h/2} ${n.x+s.w/2},${n.y} ${n.x},${n.y+s.h/2} ${n.x-s.w/2},${n.y}`,style:sty}));
+      const k=n.type==='and'?10:8,ls=`stroke:var(--fg);stroke-width:3;stroke-linecap:round`;
+      if(n.type==='and')g.append(sv('path',{d:`M${n.x-k} ${n.y}H${n.x+k}M${n.x} ${n.y-k}V${n.y+k}`,style:ls}));
+      else g.append(sv('path',{d:`M${n.x-k} ${n.y-k}L${n.x+k} ${n.y+k}M${n.x+k} ${n.y-k}L${n.x-k} ${n.y+k}`,style:ls}));
+    }
+    if(n.type==='task'){
+      const L=wrapText(n.label||'وظیفه'),f=Store.forms.find(x=>x.id===n.formId),roles=(n.roles||[]).join('، ');
+      const y0=n.y-(L.length>1?20:12);
+      L.forEach((t,i)=>g.append(sv('text',{x:n.x,y:y0+i*15,'text-anchor':'middle','font-size':13,'font-weight':600,style:'direction:rtl'},t)));
+      const info=`${f?f.title:'⚠ فرم؟'} · ${roles||'⚠ نقش؟'}`;
+      g.append(sv('text',{x:n.x,y:n.y+s.h/2-10,'text-anchor':'middle','font-size':10.5,style:'direction:rtl;fill:var(--muted)'},info.length>30?info.slice(0,29)+'…':info));
+    }else if(n.label)g.append(sv('text',{x:n.x,y:n.y+s.h/2+15,'text-anchor':'middle','font-size':12,style:'direction:rtl'},n.label));
+    svg.append(g);
+  }
+}
+function validateModel(m){
+  const E=[],W=[],inn=id=>m.edges.filter(e=>e.to===id),out=id=>m.edges.filter(e=>e.from===id);
+  const starts=m.nodes.filter(n=>n.type==='start'),ends=m.nodes.filter(n=>n.type==='end');
+  if(starts.length!==1)E.push(starts.length?'بیش از یک رویداد شروع وجود دارد.':'رویداد شروع وجود ندارد.');
+  if(!ends.length)E.push('دست‌کم یک رویداد پایان لازم است.');
+  if(!m.nodes.some(n=>n.type==='task'))E.push('دست‌کم یک وظیفه لازم است.');
+  const roles=DB.get('roles',[]).map(r=>r.name);
+  for(const n of m.nodes){
+    const nm=nodeName(n),i=inn(n.id).length,o=out(n.id).length;
+    if(n.type==='start'){if(i)E.push(`${nm}: نباید ورودی داشته باشد.`);if(o!==1)E.push(`${nm}: باید دقیقاً یک خروجی داشته باشد.`);}
+    else if(n.type==='end'){if(!i)E.push(`${nm}: ورودی ندارد.`);if(o)E.push(`${nm}: نباید خروجی داشته باشد.`);}
+    else{
+      if(!i)E.push(`${nm}: ورودی ندارد.`);if(!o)E.push(`${nm}: خروجی ندارد.`);
+      if(n.type==='task'){
+        if(!n.formId||!Store.forms.some(f=>f.id===n.formId))E.push(`${nm}: فرمی (موجود) به این وظیفه وصل نشده است.`);
+        const rs=n.roles||[];
+        if(!rs.length)E.push(`${nm}: هیچ نقشی منتسب نشده است.`);
+        else if(rs.some(r=>!roles.includes(r)))E.push(`${nm}: نقشی که دیگر وجود ندارد منتسب شده است.`);
+        if(o>1)W.push(`${nm}: چند خروجی هم‌زمان دارد؛ برای شرط یا موازی‌سازی از دروازه استفاده کنید.`);
+      }else{
+        if(i===1&&o===1)W.push(`${nm}: دروازه‌ای با یک ورودی و یک خروجی اثری ندارد.`);
+        if(n.type==='xor'&&o>1&&out(n.id).filter(e=>!(e.label||'').trim()).length>1)W.push(`${nm}: مسیرهای خروجی دروازهٔ انحصاری باید شرط (برچسب) داشته باشند؛ تنها یک مسیر می‌تواند بدون برچسب (پیش‌فرض) باشد.`);
+      }
+    }
+  }
+  if(starts.length===1){
+    const seen=new Set([starts[0].id]),q=[starts[0].id];
+    while(q.length){const c=q.shift();out(c).forEach(e=>{if(!seen.has(e.to)){seen.add(e.to);q.push(e.to);}});}
+    m.nodes.filter(n=>!seen.has(n.id)).forEach(n=>E.push(`${nodeName(n)}: از رویداد شروع قابل دسترسی نیست.`));
+  }
+  if(ends.length){
+    const seen=new Set(ends.map(n=>n.id)),q=[...seen];
+    while(q.length){const c=q.shift();inn(c).forEach(e=>{if(!seen.has(e.from)){seen.add(e.from);q.push(e.from);}});}
+    m.nodes.filter(n=>!seen.has(n.id)&&n.type!=='end').forEach(n=>E.push(`${nodeName(n)}: به هیچ رویداد پایانی نمی‌رسد.`));
+  }
+  return {errors:[...new Set(E)],warnings:W};
+}
+function toBpmnXml(m){
+  const esc=s=>String(s??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
+  const id=x=>'N_'+x,tag={start:'startEvent',end:'endEvent',task:'userTask',xor:'exclusiveGateway',and:'parallelGateway'};
+  const pid='Process_'+m.id;
+  const nodes=m.nodes.map(n=>{
+    const ins=m.edges.filter(e=>e.to===n.id).map(e=>`<incoming>E_${e.id}</incoming>`).join(''),outs=m.edges.filter(e=>e.from===n.id).map(e=>`<outgoing>E_${e.id}</outgoing>`).join('');
+    let body='';
+    if(n.type==='task'){const f=Store.forms.find(x=>x.id===n.formId);
+      body=`<documentation>${esc(f?'فرم: '+f.title:'')}</documentation><extensionElements><fb:form formId="${esc(n.formId||'')}" title="${esc(f?f.title:'')}"/></extensionElements>${ins}${outs}<potentialOwner><resourceAssignmentExpression><formalExpression>${esc((n.roles||[]).join(','))}</formalExpression></resourceAssignmentExpression></potentialOwner>`;}
+    else body=ins+outs;
+    return `<${tag[n.type]} id="${id(n.id)}" name="${esc(n.label||'')}">${body}</${tag[n.type]}>`;}).join('\n    ');
+  const flows=m.edges.map(e=>`<sequenceFlow id="E_${e.id}" sourceRef="${id(e.from)}" targetRef="${id(e.to)}"${e.label?` name="${esc(e.label)}"`:''}/>`).join('\n    ');
+  const shapes=m.nodes.map(n=>{const s=NODE_SIZE[n.type];return `<bpmndi:BPMNShape id="S_${n.id}" bpmnElement="${id(n.id)}"><dc:Bounds x="${Math.round(n.x-s.w/2)}" y="${Math.round(n.y-s.h/2)}" width="${s.w}" height="${s.h}"/></bpmndi:BPMNShape>`;}).join('\n      ');
+  const edges=m.edges.map(e=>{const g=edgeGeom(m,e);if(!g)return '';return `<bpmndi:BPMNEdge id="D_${e.id}" bpmnElement="E_${e.id}"><di:waypoint x="${Math.round(g.p1.x)}" y="${Math.round(g.p1.y)}"/><di:waypoint x="${Math.round(g.p2.x)}" y="${Math.round(g.p2.y)}"/></bpmndi:BPMNEdge>`;}).join('\n      ');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:fb="urn:formbuilder" targetNamespace="urn:formbuilder:process" id="Defs_${m.id}">
+  <process id="${pid}" name="${esc(m.name)}" isExecutable="false">
+    ${nodes}
+    ${flows}
+  </process>
+  <bpmndi:BPMNDiagram id="Diagram_${m.id}"><bpmndi:BPMNPlane id="Plane_${m.id}" bpmnElement="${pid}">
+      ${shapes}
+      ${edges}
+  </bpmndi:BPMNPlane></bpmndi:BPMNDiagram>
+</definitions>
+`;
+}
+// مدل‌های قدیمی (فهرست مراحل) به گراف خطی تبدیل می‌شوند
+function migrateProcesses(){
+  const ps=DB.get('processes',[]);
+  if(!ps.some(p=>!Array.isArray(p.nodes)))return;
+  DB.set('processes',ps.map(p=>{
+    if(Array.isArray(p.nodes))return p;
+    const nodes=[{id:uid(),type:'start',x:60,y:120,label:''}];
+    (p.steps||[]).forEach((st,i)=>{const f=Store.forms.find(x=>x.title===st.form);nodes.push({id:uid(),type:'task',x:200+i*210,y:120,label:st.title,formId:f?f.id:'',roles:st.role?[st.role]:[]});});
+    nodes.push({id:uid(),type:'end',x:200+(p.steps||[]).length*210,y:120,label:''});
+    const edges=nodes.slice(1).map((n,i)=>({id:uid(),from:nodes[i].id,to:n.id,label:''}));
+    const {steps,...rest}=p;
+    return {...rest,status:'draft',version:0,nodes,edges};
+  }));
+}
+const procSchema=()=>({id:'__proc',title:'فرایند',fields:[
+  F('name','نام فرایند','text',{required:true}),F('description','توضیحات','textarea'),
+  F('trigger','شروع فرایند','select',{required:true,options:['دستی','پس از ثبت رکورد']})]});
+const procUsedForm=fid=>DB.get('processes',[]).find(p=>(p.nodes||[]).some(n=>n.formId===fid));
 function viewProcess(){
   const ps=DB.get('processes',[]);
-  const open=p=>editEntity(procSchema(),p||{trigger:'دستی',steps:[]},p?'ویرایش فرآیند':'فرآیند جدید',d=>{upsert('processes',{...(p||{}),...d,id:p?.id||uid()});viewProcess();});
-  page({title:'تعریف فرآیند'},
-    h('div',{class:'note',style:'margin-bottom:12px'},'در این مرحله مراحل فرآیند تعریف و ذخیره می‌شود. اجرای خودکار فرآیند، ارجاع بین کاربران و گردش کار در مرحلهٔ بعد اضافه می‌شود.'),
-    ps.length?ps.map(p=>entityCard(p.name,p.description||null,{badge:p.trigger,onEdit:()=>open(p),onDelete:()=>{if(confirm('فرآیند حذف شود؟')){removeFrom('processes',p.id);viewProcess();}},
-      body:h('ol',{class:'steps'},(p.steps||[]).map(s=>h('li',{},h('b',{},s.title),h('span',{class:'muted sm'},` — ${s.action}${s.role?' · '+s.role:''}${s.form?' · فرم «'+s.form+'»':''}${s.notify?' · 📨':''}`))))}))
-      :h('div',{class:'empty'},'هنوز فرآیندی تعریف نشده است.'),
-    fab('＋ فرآیند جدید',()=>open(null)));
+  const newModel=()=>({id:uid(),status:'draft',version:0,trigger:'دستی',nodes:[{id:uid(),type:'start',x:70,y:140,label:''},{id:uid(),type:'end',x:560,y:140,label:''}],edges:[]});
+  const meta=p=>editEntity(procSchema(),p||{trigger:'دستی'},p?'مشخصات مدل فرایند':'مدل فرایند جدید',d=>{
+    const m={...(p||newModel()),...d};upsert('processes',m);
+    if(p)viewProcess();else location.hash='#/process/'+m.id;});
+  const dup=p=>{const idm={};const nodes=p.nodes.map(n=>{const id=uid();idm[n.id]=id;return {...n,id,roles:[...(n.roles||[])]};});
+    upsert('processes',{...p,id:uid(),name:p.name+' (کپی)',status:'draft',version:0,nodes,edges:p.edges.map(e=>({...e,id:uid(),from:idm[e.from],to:idm[e.to]}))});viewProcess();};
+  page({title:'مدل‌های فرایند'},
+    h('div',{class:'note',style:'margin-bottom:12px'},'هر مدل یک گراف BPMN است. مدل تا وقتی «فعال» نشده باشد در اجرای فرایند استفاده نمی‌شود. اجرای فرایند و ارجاع کار به کاربران در مرحلهٔ بعد اضافه می‌شود.'),
+    ps.length?ps.map(p=>{
+      const v=validateModel(p),svg=sv('svg',{class:'bp-prev'});drawGraph(svg,p,{preview:true});
+      const tasks=p.nodes.filter(n=>n.type==='task').length;
+      return entityCard(p.name,p.description||null,{badge:p.status==='active'?'فعال':'پیش‌نویس',onEdit:()=>meta(p),onDelete:()=>{if(confirm(`مدل «${p.name}» حذف شود؟`)){removeFrom('processes',p.id);viewProcess();}},
+        body:h('div',{},h('a',{href:'#/process/'+p.id,class:'bp-prevbox'},svg),
+          h('p',{class:'muted sm'},`${fa(tasks)} وظیفه · ${fa(p.edges.length)} اتصال · ${p.trigger||''}${v.errors.length?` · ⚠ ${fa(v.errors.length)} خطا`:''}`),
+          h('div',{class:'btn-row'},h('a',{class:'btn primary',href:'#/process/'+p.id},p.status==='active'?'مشاهده':'طراحی'),h('button',{class:'btn',onclick:()=>dup(p)},'کپی')))});})
+      :h('div',{class:'empty'},'هنوز مدلی ساخته نشده است.'),
+    fab('＋ مدل فرایند جدید',()=>meta(null)));
+}
+function viewProcessEditor(id){
+  const found=DB.get('processes',[]).find(p=>p.id===id);
+  if(!found)return notFound();
+  const m=JSON.parse(JSON.stringify(found));
+  let tool='select',sel=null,from=null,zoom=1,drag=null,undo=[],saveT=null,addN=0;
+  const ro=()=>m.status==='active';
+  const save=()=>{clearTimeout(saveT);saveT=setTimeout(()=>{m.updatedAt=Date.now();upsert('processes',m);},250);};
+  const flush=()=>{clearTimeout(saveT);m.updatedAt=Date.now();upsert('processes',m);};
+  const snap=()=>{undo.push(JSON.stringify({n:m.nodes,e:m.edges}));if(undo.length>60)undo.shift();};
+  const svg=sv('svg',{});const box=h('div',{class:'bpcanvas'},svg);
+  const props=h('div',{class:'card bp-props'}),checks=h('div',{class:'card'}),status=h('div',{class:'card'}),tools=h('div',{class:'bp-tools'});
+  const node=i=>m.nodes.find(n=>n.id===i),snapv=v=>Math.round(v/10)*10;
+  const redraw=()=>{drawGraph(svg,m,{sel,from,zoom});box.style.height=Math.max(260,Math.min(graphBounds(m).h*zoom+4,innerHeight*.6))+'px';};
+  const refresh=()=>{redraw();renderProps();renderChecks();renderStatus();renderTools();};
+  const mutate=fn=>{if(ro()){toast('مدل فعال است؛ برای ویرایش ابتدا آن را به پیش‌نویس برگردانید');return;}snap();fn();save();refresh();};
+  const addNode=type=>mutate(()=>{
+    const cx=(box.scrollLeft+box.clientWidth/2)/zoom,cy=(box.scrollTop+box.clientHeight/2)/zoom,o=(addN++%6)*24;
+    const n={id:uid(),type,x:snapv(cx+o),y:snapv(cy+o),label:type==='task'?'وظیفهٔ جدید':'',...(type==='task'?{formId:'',roles:[]}:{})};
+    m.nodes.push(n);sel={kind:'node',id:n.id};
+  });
+  const delSel=()=>{if(!sel)return;mutate(()=>{
+    if(sel.kind==='node'){m.nodes=m.nodes.filter(n=>n.id!==sel.id);m.edges=m.edges.filter(e=>e.from!==sel.id&&e.to!==sel.id);}
+    else m.edges=m.edges.filter(e=>e.id!==sel.id);sel=null;from=null;});};
+  const connect=n=>{
+    if(!from){from=n.id;redraw();return;}
+    const a=node(from);from=null;
+    if(a.id===n.id){redraw();return;}
+    if(n.type==='start'){toast('به رویداد شروع نمی‌توان اتصال ورودی داد');redraw();return;}
+    if(a.type==='end'){toast('از رویداد پایان نمی‌توان خروجی گرفت');redraw();return;}
+    if(m.edges.some(e=>e.from===a.id&&e.to===n.id)){toast('این اتصال از قبل وجود دارد');redraw();return;}
+    mutate(()=>{const e={id:uid(),from:a.id,to:n.id,label:''};m.edges.push(e);sel={kind:'edge',id:e.id};});
+  };
+  const pt=e=>{const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse());};
+  svg.addEventListener('pointerdown',e=>{
+    const g=e.target.closest('[data-nid]'),ge=e.target.closest('[data-eid]');
+    if(g){const n=node(g.dataset.nid);
+      if(tool==='connect'&&!ro()){connect(n);return;}
+      sel={kind:'node',id:n.id};const p=pt(e);drag={id:n.id,sx:p.x,sy:p.y,ox:n.x,oy:n.y,moved:false};
+      try{svg.setPointerCapture(e.pointerId);}catch{}
+      redraw();renderProps();
+    }else if(ge){sel={kind:'edge',id:ge.dataset.eid};redraw();renderProps();}
+    else{sel=null;if(tool==='connect')from=null;redraw();renderProps();}
+  });
+  svg.addEventListener('pointermove',e=>{
+    if(!drag||ro())return;const p=pt(e),n=node(drag.id);
+    if(!drag.moved){if(Math.hypot(p.x-drag.sx,p.y-drag.sy)<5)return;snap();drag.moved=true;}
+    n.x=Math.max(40,snapv(drag.ox+p.x-drag.sx));n.y=Math.max(40,snapv(drag.oy+p.y-drag.sy));redraw();
+  });
+  const endDrag=()=>{if(drag&&drag.moved){save();renderChecks();}drag=null;};
+  svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
+  const keyH=e=>{if(!document.body.contains(box)){document.removeEventListener('keydown',keyH);return;}
+    if((e.key==='Delete'||e.key==='Backspace')&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();delSel();}
+    if(e.key==='Escape'){from=null;tool='select';refresh();}};
+  document.addEventListener('keydown',keyH);
+
+  function renderTools(){
+    tools.replaceChildren();
+    const b=(t,fn,on,dis)=>tools.append(h('button',{type:'button',class:'btn'+(on?' on':''),...(dis?{disabled:true}:{}),onclick:fn},t));
+    const d=ro();
+    b('انتخاب / جابه‌جایی',()=>{tool='select';from=null;refresh();},tool==='select');
+    b('＋ شروع',()=>addNode('start'),false,d);b('＋ وظیفه',()=>addNode('task'),false,d);
+    b('＋ دروازهٔ XOR',()=>addNode('xor'),false,d);b('＋ دروازهٔ AND',()=>addNode('and'),false,d);b('＋ پایان',()=>addNode('end'),false,d);
+    b('اتصال ←',()=>{tool=tool==='connect'?'select':'connect';from=null;refresh();},tool==='connect',d);
+    b('واگرد',()=>{const s=undo.pop();if(!s)return;const o=JSON.parse(s);m.nodes=o.n;m.edges=o.e;sel=null;from=null;save();refresh();},false,d||!undo.length);
+    b('حذف انتخاب‌شده',delSel,false,d||!sel);
+    b('−',()=>{zoom=Math.max(.5,+(zoom-.15).toFixed(2));redraw();});b('+',()=>{zoom=Math.min(1.8,+(zoom+.15).toFixed(2));redraw();});
+    b('خروجی BPMN',()=>download(`${m.name||'process'}.bpmn`,toBpmnXml(m),'application/xml'));
+  }
+  function renderProps(){
+    props.replaceChildren();
+    const lock=ro();
+    if(!sel){props.append(h('div',{class:'muted'},tool==='connect'?(from?'گرهٔ مقصد را انتخاب کنید.':'گرهٔ مبدأ را انتخاب کنید.'):'یک عنصر را انتخاب کنید، یا از نوار ابزار عنصر جدید بیفزایید و آن را بکشید. برای اتصال، «اتصال» را بزنید و به‌ترتیب مبدأ و مقصد را انتخاب کنید.'));return;}
+    if(sel.kind==='edge'){
+      const e=m.edges.find(x=>x.id===sel.id);if(!e){sel=null;return renderProps();}
+      const a=node(e.from),b=node(e.to);
+      const inp=h('input',{type:'text',value:e.label||'',placeholder:'مثلاً: تأیید شد',disabled:lock,oninput:ev=>{if(!e.label&&!ev.target.value)return;e.label=ev.target.value;save();redraw();renderChecks();},onfocus:()=>{if(!lock)snap();}});
+      props.append(h('h3',{},'اتصال'),h('p',{class:'muted sm'},`${nodeName(a)} ← ${nodeName(b)}`),h('div',{class:'field'},h('div',{class:'lbl'},'برچسب / شرط'),inp),
+        h('div',{class:'btn-row'},h('button',{class:'btn danger',disabled:lock,onclick:delSel},'حذف اتصال')));
+      return;
+    }
+    const n=node(sel.id);if(!n){sel=null;return renderProps();}
+    props.append(h('h3',{},BP_TYPES[n.type].label));
+    props.append(h('div',{class:'field'},h('div',{class:'lbl'},n.type==='task'?'عنوان وظیفه':'برچسب (اختیاری)'),
+      h('input',{type:'text',value:n.label||'',disabled:lock,onfocus:()=>{if(!lock)snap();},oninput:ev=>{n.label=ev.target.value;save();redraw();renderChecks();}})));
+    if(n.type==='task'){
+      const fs=Store.forms;
+      props.append(h('div',{class:'field'},h('div',{class:'lbl'},'فرم مرتبط'),
+        h('select',{disabled:lock,onchange:ev=>mutate(()=>{n.formId=ev.target.value;})},
+          h('option',{value:''},'— انتخاب فرم —'),...fs.map(f=>h('option',{value:f.id,selected:f.id===n.formId},f.title)))));
+      const roles=DB.get('roles',[]).filter(r=>!r.sub);
+      props.append(h('div',{class:'field'},h('div',{class:'lbl'},'نقش‌های کاندیدای انجام وظیفه'),
+        h('div',{class:'opts'},roles.length?roles.map(r=>h('label',{class:'opt'},h('input',{type:'checkbox',checked:(n.roles||[]).includes(r.name),disabled:lock,
+          onchange:ev=>mutate(()=>{const s=new Set(n.roles||[]);ev.target.checked?s.add(r.name):s.delete(r.name);n.roles=[...s];})}),r.name)):h('span',{class:'muted'},'نقشی تعریف نشده است.')),
+        h('div',{class:'help'},'کاربرانی که یکی از این نقش‌ها را دارند، کاندیدای انجام این وظیفه خواهند بود.')));
+    }
+    if(n.type==='xor')props.append(h('div',{class:'help'},'دروازهٔ انحصاری: فقط یکی از مسیرهای خروجی طی می‌شود؛ روی هر مسیر خروجی شرط (برچسب) بگذارید.'));
+    if(n.type==='and')props.append(h('div',{class:'help'},'دروازهٔ موازی: همهٔ مسیرهای خروجی هم‌زمان آغاز می‌شوند و در ورودی، منتظر رسیدن همهٔ مسیرها می‌ماند.'));
+    props.append(h('div',{class:'btn-row'},h('button',{class:'btn danger',disabled:lock,onclick:delSel},'حذف')));
+  }
+  function renderChecks(){
+    const v=validateModel(m);checks.replaceChildren(h('h3',{},'اعتبارسنجی'));
+    if(!v.errors.length&&!v.warnings.length)checks.append(h('div',{class:'ok'},'✓ مدل مشکلی ندارد و قابل فعال‌سازی است.'));
+    v.errors.forEach(t=>checks.append(h('div',{class:'err'},'✗ '+t)));
+    v.warnings.forEach(t=>checks.append(h('div',{class:'muted sm'},'⚠ '+t)));
+  }
+  function renderStatus(){
+    status.replaceChildren();
+    if(ro())status.append(h('div',{class:'note'},`این مدل فعال است (نسخهٔ ${fa(m.version||1)}) و قابل ویرایش نیست.`),
+      h('div',{class:'btn-row'},h('button',{class:'btn',onclick:()=>{if(!confirm('مدل به پیش‌نویس برگردد؟ تا فعال‌سازی دوباره، در اجرای فرایند استفاده نمی‌شود.'))return;m.status='draft';flush();refresh();}},'بازگرداندن به پیش‌نویس')));
+    else status.append(h('div',{class:'muted sm'},'پیش‌نویس: تا فعال نشود در اجرای فرایند استفاده نمی‌شود. تغییرات خودکار ذخیره می‌شوند.'),
+      h('div',{class:'btn-row'},h('button',{class:'btn primary',onclick:()=>{
+        const v=validateModel(m);
+        if(v.errors.length){openDialog(h('div',{},h('p',{},'برای فعال‌سازی، این موارد را رفع کنید:'),h('ul',{},v.errors.map(t=>h('li',{},t)))),{title:'مدل قابل فعال‌سازی نیست'});return;}
+        m.status='active';m.version=(m.version||0)+1;m.activatedAt=Date.now();sel=null;from=null;tool='select';flush();refresh();toast('مدل فعال شد');
+      }},'فعال‌سازی مدل')));
+  }
+  page({title:m.name,back:'#/process'},tools,box,props,checks,status);
+  zoom=Math.max(.5,Math.min(1,+((box.clientWidth-4)/graphBounds(m).w).toFixed(2)));
+  refresh();
 }
 
 /* ---- messengers ---- */
@@ -2453,7 +2728,7 @@ function route(){
       case 'records':viewRecords(b);break;
       case 'reports':viewReports();break;
       case 'users':viewUsers(b);break;
-      case 'process':viewProcess();break;
+      case 'process':b?viewProcessEditor(b):viewProcess();break;
       case 'messenger':viewMessenger();break;
       case 'bale':viewPlatform('bale');break;
       case 'telegram':viewPlatform('telegram');break;
