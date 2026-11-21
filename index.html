@@ -495,7 +495,19 @@ async function putBlob(f,blob,name,type,shrink){
   const meta={id:uid(),name,type:type||b.type||'application/octet-stream',size:b.size};
   await FS.put({...meta,blob:b});return meta;
 }
-async function storeFile(f,file){checkFile(f,file.name,file.type,file.size);return putBlob(f,file,file.name||'file',file.type,true);}
+async function storeFile(f,file){
+  checkFile(f,file.name,file.type,file.size);
+  if(f.storage!=='telegram')return putBlob(f,file,file.name||'file',file.type,true);
+  // ذخیره فقط در تلگرام: فایل به چت ذخیره‌سازی فرستاده می‌شود و فقط file_id نگه داشته می‌شود
+  const c=DB.get('telegram',{});
+  if(!c.token||!c.chatId)throw new Error('برای ذخیره در تلگرام، توکن و «شناسهٔ چت پیش‌فرض» را در تنظیمات تلگرام وارد کنید.');
+  let blob=file,name=file.name||'file',type=file.type||'application/octet-stream';
+  if(f.resize!==false&&/^image\//.test(type)){blob=await shrinkImage(file);if(blob!==file){name=name.replace(/\.[^.]+$/,'')+'.jpg';type='image/jpeg';}}
+  const isImg=/^image\/(jpeg|png|webp)$/.test(type)&&blob.size<10*1048576;
+  const msg=await tgUpload(isImg?'sendPhoto':'sendDocument',{chat_id:c.chatId,caption:`📎 ${f.label}`},{[isImg?'photo':'document']:blob},{[isImg?'photo':'document']:name});
+  const fid=isImg?msg.photo[msg.photo.length-1].file_id:msg.document.file_id;
+  return {id:uid(),name,type,size:blob.size,tgOnly:true,tg:{file_id:fid}};
+}
 async function tgDownload(fileId){
   const c=DB.get('telegram',{}),base=(c.baseUrl||PLATFORMS.telegram.base).replace(/\/+$/,'');
   const info=await tg('getFile',{file_id:fileId});
@@ -506,6 +518,22 @@ async function tgDownload(fileId){
 function fileNode(m){
   const box=h('span',{class:'fchip'}),label=h('span',{},`${m.name} (${fmtSize(m.size||0)})`);
   box.append(label);
+  if(m.tgOnly){ // فایل فقط در تلگرام است؛ هنگام نمایش، در دسترس بودنش بررسی می‌شود
+    const st=h('span',{class:'muted sm'},'در تلگرام · در حال بررسی…');
+    const chk=async()=>{
+      st.textContent='در تلگرام · در حال بررسی…';
+      try{const i=await tg('getFile',{file_id:m.tg.file_id});st.textContent=i&&i.file_path?'در تلگرام · ✓ قابل دانلود':'در تلگرام · ✓ موجود (دانلود ربات ممکن نیست)';}
+      catch(e){st.textContent='در تلگرام · ✗ در دسترس نیست';}
+    };
+    const dl=h('button',{type:'button',class:'btn sm',onclick:async e=>{
+      e.target.disabled=true;
+      try{const blob=await tgDownload(m.tg.file_id),u=URL.createObjectURL(blob),a=h('a',{href:u,download:m.name});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),6e4);}
+      catch(er){toast('دانلود ممکن نشد: '+er.message);}
+      e.target.disabled=false;}},'دریافت');
+    box.append(st,dl,h('button',{type:'button',class:'btn sm',onclick:chk},'بررسی'));
+    if(DB.get('telegram',{}).token&&navigator.onLine!==false)chk();else st.textContent='در تلگرام · بررسی نشد';
+    return box;
+  }
   FS.get(m.id).then(r=>{
     if(r&&r.blob){
       const url=URL.createObjectURL(r.blob);
@@ -1522,7 +1550,7 @@ function viewBuilder(id){
     if(!draft.fields.length)listEl.append(h('div',{class:'empty sm'},'هنوز فیلدی اضافه نشده است.'));
     draft.fields.forEach((f,i)=>{
       const sub=f.type==='subform'?getForm(f.subformId):null;
-      const info=TYPES[f.type].label+(f.type==='imageradio'?` · ${fa((f.choices||[]).length)} گزینه`:'')+(f.type==='file'?(f.accept==='image'?' · فقط تصویر':'')+(f.multiple?' · چندتایی':''):'')+(f.required?' · اجباری':'')+(f.type==='subform'?` · «${sub?sub.title:'؟'}» · ${f.mode==='inline'?'درون‌خط':'دیالوگ'} · ${f.multiple?'چندرکوردی':'تک‌رکوردی'}`:'');
+      const info=TYPES[f.type].label+(f.type==='imageradio'?` · ${fa((f.choices||[]).length)} گزینه`:'')+(f.type==='file'?(f.accept==='image'?' · فقط تصویر':'')+(f.multiple?' · چندتایی':'')+(f.storage==='telegram'?' · ذخیره در تلگرام':''):'')+(f.required?' · اجباری':'')+(f.type==='subform'?` · «${sub?sub.title:'؟'}» · ${f.mode==='inline'?'درون‌خط':'دیالوگ'} · ${f.multiple?'چندرکوردی':'تک‌رکوردی'}`:'');
       listEl.append(h('div',{class:'fcard'},
         h('div',{class:'fmain'},h('b',{},f.label),h('div',{class:'muted sm'},info)),
         h('div',{class:'fbtns'},
@@ -1598,6 +1626,10 @@ function openFieldEditor(draft,field,onSave){
       cfg.append(h('label',{class:'chk'},h('input',{type:'checkbox',checked:!!f.multiple,onchange:e=>{f.multiple=e.target.checked;drawCfg();}}),'امکان ارسال چند فایل'));
       if(f.multiple)cfg.append(row('حداکثر تعداد فایل',numIn('maxFiles','5')));
       cfg.append(row('حداکثر حجم هر فایل (مگابایت)',numIn('maxMB','10')));
+      cfg.append(row('محل ذخیرهٔ فایل',h('select',{onchange:e=>{f.storage=e.target.value;drawCfg();}},
+        h('option',{value:'local',selected:f.storage!=='telegram'},'داخل برنامه (روی همین دستگاه)'),
+        h('option',{value:'telegram',selected:f.storage==='telegram'},'فقط در تلگرام (فقط شناسهٔ فایل نگه‌داری شود)'))));
+      if(f.storage==='telegram')cfg.append(h('div',{class:'note'},'فایل روی تلگرام می‌ماند و برنامه فقط file_id را نگه می‌دارد؛ حجمی از برنامه اشغال نمی‌شود و بعداً می‌توان آن را با همان ربات برای دیگران فرستاد. هنگام نمایش، در دسترس بودن فایل بررسی می‌شود. در فرم داخل برنامه، فایل به «شناسهٔ چت پیش‌فرض» در تنظیمات تلگرام فرستاده می‌شود؛ file_id مخصوص همین ربات است و اگر پیام آن چت حذف شود یا ربات عوض شود از کار می‌افتد.'));
       cfg.append(h('label',{class:'chk'},h('input',{type:'checkbox',checked:f.resize!==false,onchange:e=>{f.resize=e.target.checked;}}),'کوچک‌سازی خودکار تصویر (حداکثر ۱۶۰۰ پیکسل)'));
       cfg.append(h('div',{class:'help'},'فایل‌ها در حافظهٔ مرورگر (نه در داخل متن فرم) ذخیره می‌شوند. در تلگرام حداکثر حجم قابل دریافت ۲۰ مگابایت است.'));
     }
@@ -1696,12 +1728,12 @@ const tg=(method,body,signal)=>botCall('telegram',method,body,signal);
 const tbtn=(text,data)=>({text,callback_data:data});
 const tsend=(chat,text,kb)=>tg('sendMessage',{chat_id:chat,text,...(kb&&kb.length?{reply_markup:{inline_keyboard:kb}}:{})});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function tgUpload(method,fields,files){
+async function tgUpload(method,fields,files,names){
   const c=DB.get('telegram',{});
   const base=(c.baseUrl||PLATFORMS.telegram.base).replace(/\/+$/,'');
   const fd=new FormData();
   for(const k in fields)fd.append(k,typeof fields[k]==='string'||typeof fields[k]==='number'?String(fields[k]):JSON.stringify(fields[k]));
-  for(const k in files)fd.append(k,files[k],k+'.jpg');
+  for(const k in files)fd.append(k,files[k],(names&&names[k])||k+'.jpg');
   const res=await fetch(`${base}/bot${c.token}/${method}`,{method:'POST',body:fd});
   const j=await res.json().catch(()=>({}));
   if(!res.ok||j.ok===false)throw new Error(j.description||('خطای HTTP '+res.status));
@@ -2065,6 +2097,7 @@ async function acceptFile(f,m){
   const k=fileKind(m);if(!k)return {error:'لطفاً فایل یا تصویر بفرستید (نه متن).'};
   try{checkFile(f,k.name,k.type,k.size);}catch(e){return {error:e.message};}
   if(k.size>20*1048576)return {error:'تلگرام اجازهٔ دریافت فایل بیشتر از ۲۰ مگابایت را به ربات نمی‌دهد.'};
+  if(f.storage==='telegram')return {meta:{id:uid(),name:k.name,type:k.type,size:k.size,tgOnly:true,tg:{file_id:k.id}}};
   try{return {meta:await putBlob(f,await tgDownload(k.id),k.name,k.type,false)};}
   catch(e){ // مثلاً CORS یا خطای شبکه: فقط شناسهٔ فایل در تلگرام ثبت می‌شود و بعداً می‌توان دریافتش کرد
     console.warn('tg file',e);
